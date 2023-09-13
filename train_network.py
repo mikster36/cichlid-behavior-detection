@@ -2,8 +2,8 @@ import deeplabcut as dlc
 import subprocess
 import re
 
-shuffles = [1, 2, 3, 4]
-trainingsetindices = [0, 1, 2, 3]
+shuffles = [1, 2]
+training_iterations = [100000, 150000]
 
 project_path = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26"
 config_path = f"{project_path}/config.yaml"
@@ -38,7 +38,10 @@ def kill_and_reset():
     except subprocess.CalledProcessError as e:
         print(f"Failed to kill process with PID {pid}. Error: {e}")
 
+#for shuffle, maxiters in zip(shuffles, training_iterations):
+    #dlc.train_network(config=config_path, shuffle=shuffle, maxiters=maxiters)
+    #kill_and_reset()
 
-for shuffle, trainingsetindex in zip(shuffles, trainingsetindices):
-    dlc.train_network(config=config_path, shuffle=shuffle, trainingsetindex=trainingsetindex, maxiters=100000)
-    kill_and_reset()
+
+dlc.evaluate_network(config=config_path, Shuffles=shuffles, plotting=False)
+kill_and_reset()

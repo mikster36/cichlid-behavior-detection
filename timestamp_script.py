@@ -4,7 +4,7 @@ import os
 from moviepy.editor import VideoFileClip
 
 # Load JSON file
-with open('metadata.json', 'r') as f:
+with open('../metadata.json', 'r') as f:
     data = json.load(f)
 
 # Load MP4 file
@@ -18,7 +18,7 @@ for name in data['metadata']:
     special_var = snippet['av']['1']
    
     # Create subfolder if it doesn't exist
-    subfolder_path = os.path.join('.', special_var)
+    subfolder_path = os.path.join('..', special_var)
     if not os.path.exists(subfolder_path):
         os.makedirs(subfolder_path)
    

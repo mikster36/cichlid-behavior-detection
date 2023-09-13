@@ -1,4 +1,4 @@
-import deeplabcut
+#import deeplabcut
 import yaml
 import os
 
@@ -28,4 +28,4 @@ def change_config(NEW_ITERATION):
         os.rename(old_path, project_path + "/config.yaml")
 
 
-change_config(4)
+change_config(6)

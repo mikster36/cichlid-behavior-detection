@@ -19,7 +19,6 @@ labeled_data = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/labele
 
 """
 
-
 def euclidean_distance(row):
     sum = 0
     for i in range(0, row.size - 2, 2):

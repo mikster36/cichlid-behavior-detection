@@ -1,10 +1,9 @@
 import deeplabcut as dlc
-import subprocess
 import yaml
 import re
 
 shuffles = [1, 2]
-training_iterations = [100000, 100000]
+training_iterations = [100000, 150000]
 
 project_path = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26"
 config_path = f"{project_path}/config.yaml"
@@ -13,7 +12,9 @@ with open(password_path, 'r') as f:
     sudo_password = yaml.safe_load(f)['password']
 sudo_password += '\n'
 
+
 def kill_and_reset():
+    import subprocess
     # via chatGPT
     # Step 1: Run nvidia-smi to list GPU processes and their memory usage
     nvidia_smi_output = subprocess.run(['nvidia-smi'], capture_output=True, text=True).stdout
@@ -41,14 +42,8 @@ def kill_and_reset():
     except subprocess.CalledProcessError as e:
         print(f"Failed to kill process with PID {pid}. Error: {e}")
 
-#for shuffle, maxiters in zip(shuffles, training_iterations):
-    #dlc.train_network(config=config_path, shuffle=shuffle, maxiters=maxiters)
-    #kill_and_reset()
 """
-dlc.analyze_videos()
-dlc.create_video_with_all_detections()
-dlc.create_labeled_video(config_path, )
-dlc.evaluate_network(config=config_path, Shuffles=shuffles, plotting=False)
-kill_and_reset()
+for shuffle, maxiters in zip(shuffles, training_iterations):
+    dlc.train_network(config=config_path, shuffle=shuffle, maxiters=maxiters)
+    kill_and_reset()
 """
-print(sudo_password)

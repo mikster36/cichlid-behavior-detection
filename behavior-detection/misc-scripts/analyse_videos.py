@@ -84,7 +84,7 @@ def generate_random_clips(videos=[], clip_length=10, n=10):
 
 def analyze_video(config_path, video_path):
     video_path = str(video_path)
-    dlc.analyze_videos(config_path, [video_path], auto_track=False, robust_nframes=True, shuffle=4, save_as_csv=True)
+    dlc.analyze_videos(config_path, [video_path], allow_growth=True, auto_track=False, robust_nframes=True, shuffle=4, save_as_csv=True)
     dlc.convert_detections2tracklets(config_path, [video_path], track_method='ellipse', shuffle=4)
     n_fish = 10
     while n_fish > 0:

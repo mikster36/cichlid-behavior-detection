@@ -4,19 +4,25 @@
     @author: mikster36
     @date: 10/2/23
 """
+import itertools
 import os
 from dataclasses import dataclass
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.markers as markers
 from PIL import Image
 
 import pandas as pd
 import numpy as np
 
-filepath_pickle = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_assemblies.pickle"
-video = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el_filtered_id_labeled.mp4"
-out = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/bower_circling/labeled-frames"
-
+filepath_pickle = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
+                   r"/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_assemblies.pickle")
+video = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
+         r"/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el_filtered_id_labeled.mp4")
+out = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/bower_circling"
+       r"/labeled-frames")
+matplotlib.use("TKAgg")
 
 @dataclass
 class Vel:
@@ -53,14 +59,37 @@ def show_nframes(frames: str, n: int):
     cv2.destroyAllWindows()
 
 
-def plot_velocity(frame: str, fishes: list(Fish), destfolder: str, show=False):
+def plot_velocities(frame: str, fishes: list[Fish], destfolder: str, show=False):
     img = Image.open(frame)
+    img_data = np.flipud(np.array(img))
     fig, ax = plt.subplots()
+    ax.imshow(img_data, origin='upper')
+    color = itertools.cycle(('red', 'blue'))
 
-    for fish in fishes:
-        x, y = fish.position
-        ax.add_patch(patches.Arrow(x, y, dx=fish.vel[0].magnitude, dy=vel.magnitude, width=vel.magnitude))
+    for i, fish in enumerate(fishes):
+        # plot each body part's velocity
+        fishcolor = next(color)
+        for velocity, position in zip(fish.vel, fish.position):
+            x, y = position
+            y = img.height - y
+            dx, dy = velocity.magnitude * velocity.direction
+            dy = -dy
+            ax.add_patch(patches.Arrow(x, y, dx=dx, dy=dy, width=5, color='white'))
+            ax.plot(x, y, marker='.', color=fishcolor, markersize=1)
+        print()
 
+    ax.set_xlim(0, img.width)
+    ax.set_ylim(0, img.height)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+
+    plt.savefig(os.path.join(destfolder, f"{os.path.basename(frame).split('.')[0]}-velocities.png"),
+                dpi=300, bbox_inches='tight', pad_inches=0)
+    plt.close()
+    if show:
+        plt.imshow()
 
 
 def get_centroid(xy_coords: list[tuple]):
@@ -86,9 +115,10 @@ def get_approximations(frame):
         bodies.append(np.array([front, centre, tail]))
     return bodies
 
-def get_velocity(pi: np.ndarray, pf: np.ndarray, n: int):
+
+def get_velocities(pi: np.ndarray, pf: np.ndarray, n: int):
     """
-    Gets the velocity of a fish
+    Gets the velocity of each fish in a frame
 
     Args:
         pi (tuple [3-tuple of tuples]): the initial position of a cichlid (head, centre, tail)
@@ -107,15 +137,21 @@ def get_velocity(pi: np.ndarray, pf: np.ndarray, n: int):
 
 if __name__=="__main__":
     data_pickle = pd.read_pickle(filepath_pickle)
-    frames = [data_pickle[i + 70] for i in range(200)]
+    start_index = 70
+    nframes = 200
+    frames = [data_pickle[i + start_index] for i in range(nframes)]
 
-    for i in range(1, 2):
+    for i in range(1, 60):
         prev_frame, curr_frame = frames[i - 1], frames[i]
         prev_bodies, curr_bodies = get_approximations(prev_frame), get_approximations(curr_frame)
-        vels = [get_velocity(prev_bodies[i], curr_bodies[i], 1) for i in range(len(frames))]
-        fishes = [Fish(position=i, vel=j) for i, j in zip(curr_bodies, vels)]
-        for fish in fishes:
-            print(f"current locs: {fish.position}")
-            print(f"head_direction={fish.vel[0].direction}, head_magnitude={fish.vel[0].magnitude}\n"
-                  f"centre_direction={fish.vel[1].direction}, centre_magnitude={fish.vel[1].magnitude}\n"
-                  f"tail_direction={fish.vel[2].direction}, tail_magnitude={fish.vel[2].magnitude}\n")
+        if len(prev_bodies) != len(curr_bodies):
+            continue
+        vels = [get_velocities(prev_bodies[i], curr_bodies[i], 1) for i in range(len(curr_bodies))]
+        fishes = [Fish(position=i, vel=j) for i, j in zip(prev_bodies, vels)]
+        frame_path = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
+                      f"/bower_circling/frames/")
+        frame_path = os.path.join(frame_path, f"frame{i + start_index - 1}.png")
+        dest_folder = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
+                       f"/bower_circling/velocities/")
+
+        plot_velocities(frame=frame_path, fishes=fishes, destfolder=dest_folder, show=False)

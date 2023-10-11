@@ -7,15 +7,18 @@
 import itertools
 import os
 from dataclasses import dataclass
+from typing import Any
+
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import matplotlib.markers as markers
 from PIL import Image
 
 import pandas as pd
 import numpy as np
 
+filepath_h5 = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/"
+               r"bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el.h5")
 filepath_pickle = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
                    r"/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_assemblies.pickle")
 video = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
@@ -23,6 +26,7 @@ video = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_s
 out = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/bower_circling"
        r"/labeled-frames")
 matplotlib.use("TKAgg")
+
 
 @dataclass
 class Vel:
@@ -32,7 +36,7 @@ class Vel:
 
 @dataclass
 class Fish:
-    position: list[np.ndarray]
+    position: Any
     vel: list[Vel]
 
 
@@ -101,24 +105,33 @@ def get_centroid(xy_coords: list[tuple]):
 
 
 def get_approximations(frame):
-    bodies = []
-    for individual in frame:
+    """
+        Approximates each fish in a frame to three clusters: front, middle, tail
+
+        Args:
+            frame: list of dicts - a frame with each detection
+        Returns:
+            a list of dicts where each key is a fish and its value is a matrix of its
+            body clusters' positions and likelihoods
+    """
+    bodies = {}
+    for fish, matrix in frame.items():
         # front cluster is the centroid of nose, lefteye, righteye, and spine1
         # middle cluster is the centroid of spine2, spine3, leftfin, and rightfin
         # tail is the backfin
         # these approximations help abstract the fish and its movement
-        front_cluster = [(individual[i][0], individual[i][1]) for i in range(4)]
-        middle_cluster = [(individual[i][0], individual[i][1]) for i in range(3, 9) if i != 6]
+        front_cluster = [(matrix[i][0], matrix[i][1]) for i in range(4)]
+        middle_cluster = [(matrix[i][0], matrix[i][1]) for i in range(3, 9) if i != 6]
         front = get_centroid(front_cluster)
         centre = get_centroid(middle_cluster)
-        tail = (individual[6][0], individual[6][1])
-        bodies.append(np.array([front, centre, tail]))
+        tail = (matrix[6][0], matrix[6][1])
+        bodies.update({fish: np.array([front, centre, tail])})
     return bodies
 
 
 def get_velocities(pi: np.ndarray, pf: np.ndarray, n: int):
     """
-    Gets the velocity of each fish in a frame
+    Gets the velocity of a fish in a frame by calculating the velocity of each body mass
 
     Args:
         pi (tuple [3-tuple of tuples]): the initial position of a cichlid (head, centre, tail)
@@ -135,23 +148,64 @@ def get_velocities(pi: np.ndarray, pf: np.ndarray, n: int):
             Vel(tail_vel / np.linalg.norm(tail_vel), np.linalg.norm(tail_vel)))
 
 
-if __name__=="__main__":
-    data_pickle = pd.read_pickle(filepath_pickle)
+def df_to_reshaped_list(df: pd.DataFrame):
+    """
+    By default, the *_el.h5 file is stored as a DataFrame with a shape and organisation
+    similar to how the csv file looks, i.e.
+
+    individual  fish1 fish1 fish1       ...
+    bodypart    nose  nose  nose        ...
+    coords      x     y     likelihood  ...
+    frame #
+    ...
+
+    This method reshapes that data into a list of dicts, where the key is the fish and
+    its value is a matrix of the following shape. The frame number is the index of the dict
+
+                x   y   likelihood
+    nose
+    lefteye
+    ...
+    rightfin
+    """
+    frames = list()
+    for i in range(df.shape[0]):
+        frame = df.iloc[i].droplevel(0).dropna()
+        frame = frame.unstack(level=[0, 2])
+        frame: pd.DataFrame = frame.reindex(['nose', 'lefteye', 'righteye',
+                                             'spine1', 'spine2', 'spine3',
+                                             'backfin', 'leftfin', 'rightfin'])
+        framedict = {fish: frame[fish].to_numpy() for fish in frame.columns.get_level_values(0).unique()}
+        frames.append(framedict)
+    return frames
+
+
+def same_fish_in_both(d1: dict, d2: dict):
+    return bool(set(d1.keys()) & set(d2.keys()))
+
+
+if __name__ == "__main__":
+    tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(filepath_h5))
+    frames = df_to_reshaped_list(tracklets)
     start_index = 70
     nframes = 200
-    frames = [data_pickle[i + start_index] for i in range(nframes)]
 
-    for i in range(1, 60):
+    frames = [frames[i + start_index] for i in range(nframes)]
+
+    for i in range(1, 2):
         prev_frame, curr_frame = frames[i - 1], frames[i]
         prev_bodies, curr_bodies = get_approximations(prev_frame), get_approximations(curr_frame)
-        if len(prev_bodies) != len(curr_bodies):
+        if not same_fish_in_both(prev_bodies, curr_bodies):
             continue
-        vels = [get_velocities(prev_bodies[i], curr_bodies[i], 1) for i in range(len(curr_bodies))]
-        fishes = [Fish(position=i, vel=j) for i, j in zip(prev_bodies, vels)]
+        # gets the velocities of fish appearing in both frames
+        vels = {key : get_velocities(prev_bodies.get(key), curr_bodies.get(key), 1)
+                for key in curr_bodies.keys() if key in prev_bodies}
+        fishes = {fish : Fish(position=prev_bodies.get(fish), vel=vel) for fish, vel in vels.items() if fish in prev_bodies}
         frame_path = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
                       f"/bower_circling/frames/")
         frame_path = os.path.join(frame_path, f"frame{i + start_index - 1}.png")
         dest_folder = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
                        f"/bower_circling/velocities/")
-
+        # needs updating
         plot_velocities(frame=frame_path, fishes=fishes, destfolder=dest_folder, show=False)
+

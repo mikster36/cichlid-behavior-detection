@@ -82,6 +82,7 @@ def generate_random_clips(videos=[], clip_length=10, n=10):
             print(f'Clip {i} successfully made.')
             temp_dir = Path(temp_dir).parent  # move to uproot
 
+
 def analyze_video(config_path, video_path):
     video_path = str(video_path)
     dlc.analyze_videos(config_path, [video_path], allow_growth=True, auto_track=False, robust_nframes=True, shuffle=4, save_as_csv=True)
@@ -122,6 +123,7 @@ def fix_individual_names(video_path):
     df.to_csv(csv_path)
     df.to_hdf(h5_path, "df_with_missing", format="table", mode="w")
 
+
 def short_testing():
     config_path = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/config.yaml'
     trial_folder = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520'
@@ -138,6 +140,7 @@ def short_testing():
                                       displayedindividuals=displayedinidividuals)
                 dlc.create_labeled_video(config_path, [vid], shuffle=4, filtered=True,
                                          displayedindividuals=displayedinidividuals, color_by="individual")
+
 
 if __name__ == "__main__":
     config_path = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/config.yaml'

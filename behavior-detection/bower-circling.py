@@ -5,7 +5,9 @@
     @date: 10/2/23
 """
 import itertools
+import math
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,7 +20,7 @@ import pandas as pd
 import numpy as np
 
 filepath_h5 = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/"
-               r"bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el.h5")
+               r"bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el_filtered.h5")
 filepath_pickle = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
                    r"/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_assemblies.pickle")
 video = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
@@ -52,6 +54,21 @@ def read_video(video: str, output: str):
         count += 1
 
 
+def create_velocity_video(frames: str, framerate=30):
+    # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
+    import subprocess as s
+    wd = os.getcwd()
+    os.chdir(frames)
+    args = ['ffmpeg', '-framerate', str(framerate), '-pattern_type', 'glob', '-i',
+            os.path.join(frames, "*.png"), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+            os.path.join(frames, "velocity.mp4")]
+    try:
+        s.call(args=args, cwd=wd)
+        print("Video successfully created.")
+    except Exception as e:
+        print(f"Video could not be successfully created.\nError: {e}")
+
+
 def show_nframes(frames: str, n: int):
     import cv2
     for i in range(n):
@@ -63,24 +80,37 @@ def show_nframes(frames: str, n: int):
     cv2.destroyAllWindows()
 
 
-def plot_velocities(frame: str, fishes: list[Fish], destfolder: str, show=False):
+def in_focus(x, y, width, height, width_cutoff=0.05, height_cutoff=0.1):
+    return (width*width_cutoff <= x <= width*(1 - width_cutoff)
+            and height*height_cutoff <= y <= height*(1 - height_cutoff))
+
+
+def plot_velocities(frame: str, frame_num: str, fishes: dict[Fish], destfolder: str, show=False):
     img = Image.open(frame)
     img_data = np.flipud(np.array(img))
     fig, ax = plt.subplots()
     ax.imshow(img_data, origin='upper')
-    color = itertools.cycle(('red', 'blue'))
+    color = {'fish1': 'red', 'fish2': 'orange', 'fish3': 'yellow', 'fish4': 'green', 'fish5': 'blue', 'fish6': 'purple',
+             'fish7': 'pink', 'fish8': 'brown', 'fish9': 'white', 'fish10': 'black'}
 
-    for i, fish in enumerate(fishes):
+    for key, fish in fishes.items():
         # plot each body part's velocity
-        fishcolor = next(color)
+        fishcolor = color.get(key)
+        if in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
+                    width=img.width, height=img.width, width_cutoff=0.05, height_cutoff=0.1):
+            ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
+                    fontsize='xx-small')
         for velocity, position in zip(fish.vel, fish.position):
             x, y = position
             y = img.height - y
+            if x < img.width*0.05 or y < img.height*0.1:
+                continue
             dx, dy = velocity.magnitude * velocity.direction
             dy = -dy
+            if abs(dx) > img.width / 3 or abs(dy) > img.height / 3:
+                break
             ax.add_patch(patches.Arrow(x, y, dx=dx, dy=dy, width=5, color='white'))
             ax.plot(x, y, marker='.', color=fishcolor, markersize=1)
-        print()
 
     ax.set_xlim(0, img.width)
     ax.set_ylim(0, img.height)
@@ -89,16 +119,18 @@ def plot_velocities(frame: str, fishes: list[Fish], destfolder: str, show=False)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
-    plt.savefig(os.path.join(destfolder, f"{os.path.basename(frame).split('.')[0]}-velocities.png"),
+    plt.savefig(os.path.join(destfolder, f"{frame_num}-velocities.png"),
                 dpi=300, bbox_inches='tight', pad_inches=0)
-    plt.close()
     if show:
         plt.imshow()
+    plt.close()
 
 
 def get_centroid(xy_coords: list[tuple]):
     x_sum, y_sum = 0, 0
     for i in xy_coords:
+        if i[0] == 0 or i[0] is np.nan or i[1] == 0 or i[1] is np.nan:
+            continue
         x_sum += i[0]
         y_sum += i[1]
     return np.array([x_sum / len(xy_coords), y_sum / len(xy_coords)])
@@ -185,27 +217,37 @@ def same_fish_in_both(d1: dict, d2: dict):
 
 
 if __name__ == "__main__":
+    allframes = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/"
+                 r"bower_circling/velocities")
+    dest_folder = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
+                   f"/bower_circling/velocities/")
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(filepath_h5))
     frames = df_to_reshaped_list(tracklets)
-    start_index = 70
-    nframes = 200
+    start_index = 0
+    nframes = tracklets.shape[0] - start_index
 
     frames = [frames[i + start_index] for i in range(nframes)]
 
-    for i in range(1, 2):
+    for i in range(1, nframes):
         prev_frame, curr_frame = frames[i - 1], frames[i]
         prev_bodies, curr_bodies = get_approximations(prev_frame), get_approximations(curr_frame)
         if not same_fish_in_both(prev_bodies, curr_bodies):
             continue
         # gets the velocities of fish appearing in both frames
-        vels = {key : get_velocities(prev_bodies.get(key), curr_bodies.get(key), 1)
+        vels = {key: get_velocities(prev_bodies.get(key), curr_bodies.get(key), 1)
                 for key in curr_bodies.keys() if key in prev_bodies}
-        fishes = {fish : Fish(position=prev_bodies.get(fish), vel=vel) for fish, vel in vels.items() if fish in prev_bodies}
+        fishes = {fish: Fish(position=prev_bodies.get(fish), vel=vel) for fish, vel in vels.items() if
+                  fish in prev_bodies}
         frame_path = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
                       f"/bower_circling/frames/")
         frame_path = os.path.join(frame_path, f"frame{i + start_index - 1}.png")
-        dest_folder = (f"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
-                       f"/bower_circling/velocities/")
-        # needs updating
-        plot_velocities(frame=frame_path, fishes=fishes, destfolder=dest_folder, show=False)
-
+        try:
+            # adjust frame number to be 0...0n instead of n
+            frame_num = int(re.findall(r'\d+', os.path.basename(frame_path).split('.')[0])[0])
+            width = int(math.log10(nframes)) + 1
+            frame_num = f"{frame_num:0{width}d}"
+            plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=dest_folder, show=False)
+            print(f"Successfully plotted velocities for frame {i - 1 + start_index}.")
+        except Exception as e:
+            print(f"Could not plot velocities for frame {i - 1 + start_index}.\nError: {e}")
+    create_velocity_video(frames=allframes)

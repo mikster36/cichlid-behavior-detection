@@ -7,7 +7,6 @@
 import itertools
 import math
 import os
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,40 +79,62 @@ def show_nframes(frames: str, n: int):
     cv2.destroyAllWindows()
 
 
-def in_focus(x, y, width, height, width_cutoff=0.05, height_cutoff=0.1):
-    return (width*width_cutoff <= x <= width*(1 - width_cutoff)
-            and height*height_cutoff <= y <= height*(1 - height_cutoff))
+def in_focus(x, y, mask_x, mask_y, width, height):
+    return mask_x <= x <= mask_x + width and mask_y <= y <= mask_y + height
 
 
-# adjust to plot every t - 1 frames with the same velocity
-def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfolder: str, show=False):
+def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfolder: str, show=False,
+                    xy=None, dimensions=None, show_mask=False):
+    """
+        Plots the velocities of each fish in a given area of focus. Since there are likely fish outside
+        the area where a behaviour can occur, the user can specify which part of the frame can be ignored
+
+        Args:
+            frame: str - the path of the frame
+            frame_num: str - the frame number with respect to all frames e.g. 0043 is the frame number for
+            a trial with 1342 frames
+            fishes: dict["fishn": Fish object] - a dictionary of all the fish in a frame
+            destfolder: str - the path of the folder where the plotted velocities will be stored
+            show: bool - whether to display the velocities plot
+            xy: tuple - (x, y) coordinates of the bottom left of the rectangle mask (area in focus)
+            dimensions: tuple - (width, height) of the rectangle mask (area in focus)
+            show_mask: bool - whether to display the mask on the produced image
+    """
     img = Image.open(frame)
     img_data = np.flipud(np.array(img))
     fig, ax = plt.subplots()
     ax.imshow(img_data, origin='upper')
     color = {'fish1': 'red', 'fish2': 'orange', 'fish3': 'yellow', 'fish4': 'green', 'fish5': 'blue',
              'fish6': 'purple', 'fish7': 'pink', 'fish8': 'brown', 'fish9': 'white', 'fish10': 'black'}
+    if dimensions is None:
+        dimensions = (img.width, img.height)
+    if xy is None:
+        xy = (img.width, img.height)
+    if show_mask:
+        ax.add_patch(patches.Rectangle(xy=(199, img.height - 240), width=dimensions[0], height=-dimensions[1],
+                                       alpha=0.2, fill=True, color="white"))
 
     for key, fish in fishes.items():
-        # plot each body part's velocity
         fishcolor = color.get(key)
         if in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
-                    width=img.width, height=img.width, width_cutoff=0.05, height_cutoff=0.1):
+                    mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
             ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
                     fontsize='xx-small')
+        # plot each body part's velocity
         for velocity, position in zip(fish.vel, fish.position):
             x, y = position
             y = img.height - y
-            if x < img.width*0.05 or y < img.height*0.1:
+            if not in_focus(x, y, xy[0], img.height - xy[1], dimensions[0], dimensions[1]):
                 continue
+            # large change in position is likely not a correct track
+            elif velocity.magnitude > img.width / 4 or velocity.magnitude > img.height / 4:
+                break
             dx, dy = velocity.magnitude * velocity.direction
             dy = -dy
-            # large change in position is likely not a correct tracking
-            if abs(dx) > img.width / 3 or abs(dy) > img.height / 3:
-                break
             ax.add_patch(patches.Arrow(x, y, dx=dx, dy=dy, width=5, color='white'))
             ax.plot(x, y, marker='.', color=fishcolor, markersize=1)
 
+    ax.plot()
     ax.set_xlim(0, img.width)
     ax.set_ylim(0, img.height)
     ax.set_xticks([])
@@ -214,8 +235,8 @@ def df_to_reshaped_list(df: pd.DataFrame):
     return frames
 
 
-def same_fish_in_t_frames(frames: list[dict[str: np.ndarray]]):
-    fish_in_curr = set(frames[2].keys())
+def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t):
+    fish_in_curr = set(frames[t - 1].keys())
     fish_in_prev = set(frames[0].keys())
     for i in range(1, len(frames)):
         fish_in_prev = fish_in_prev & set(frames[i].keys())
@@ -224,37 +245,40 @@ def same_fish_in_t_frames(frames: list[dict[str: np.ndarray]]):
 
 if __name__ == "__main__":
     frames_path = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/"
-                      r"bower_circling/frames")
+                   r"bower_circling/frames")
     dest_folder = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
                    r"/bower_circling/velocities/")
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(filepath_h5))
     frames = df_to_reshaped_list(tracklets)
     start_index = 0
     nframes = tracklets.shape[0] - start_index
+    width = int(math.log10(nframes)) + 1
     smooth_velocity = True
-    t = 3 if smooth_velocity else 1
+    t = 6 if smooth_velocity else 2
 
     frames = [frames[i + start_index] for i in range(nframes)]
 
-    for i in range(2, nframes):
-        t_frames = frames[i-t+1:i+1]
+    for i in range(t - 1, nframes, t - 1):
+        t_frames = frames[i - t + 1:i + 1]
         bodies = [get_approximations(frame) for frame in t_frames]
-        if not same_fish_in_t_frames(bodies):
+        if not same_fishes_in_t_frames(bodies, t):
             continue
-        prev_bodies, curr_bodies = bodies[0], bodies[t-1]
-        # gets the velocities of fish appearing in t frames
-        vels = {key: get_velocities(prev_bodies.get(key), curr_bodies.get(key), t)
-                for key in curr_bodies.keys() if key in prev_bodies}
-        fishes = {fish: Fish(position=prev_bodies.get(fish), vel=vel) for fish, vel in vels.items() if
-                  fish in prev_bodies}
-        frame_path = os.path.join(frames_path, f"frame{i + start_index - (t - 1)}.png")
-        try:
+        pi, pf = bodies[0], bodies[t - 1]
+        # gets the velocities of fish appearing in all t frames
+        avg_vels = {key: get_velocities(pi.get(key), pf.get(key), t)
+                    for key in pf.keys() if key in pi}
+        prev_frames = []
+        for body in bodies[:t - 1]:  # can't plot velocity for the last frame
+            prev_frames.append({fish: Fish(position=body.get(fish), vel=vel) for fish, vel in avg_vels.items()})
+        for j, frame in enumerate(prev_frames):
+            frame_index = i + j + start_index - (t - 1)
+            frame_path = os.path.join(frames_path, f"frame{frame_index}.png")
             # adjust frame number to be 0...0n instead of n
-            frame_num = int(re.findall(r'\d+', os.path.basename(frame_path).split('.')[0])[0])
-            width = int(math.log10(nframes)) + 1
-            frame_num = f"{frame_num:0{width}d}"
-            plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=dest_folder, show=False)
-            print(f"Successfully plotted velocities for frame {i + start_index - (t - 1)}.")
-        except Exception as e:
-            print(f"Could not plot velocities for frame {i + start_index - (t - 1)}.\nError: {e}")
+            frame_num = f"{(frame_index):0{width}d}"
+            try:
+                plot_velocities(frame=frame_path, frame_num=frame_num, fishes=frame, destfolder=dest_folder,
+                                show=False, xy=(197, 1071), dimensions=(938, 698))
+                print(f"Successfully plotted velocities for frame {frame_index}.")
+            except Exception as e:
+                print(f"Could not plot velocities for frame {frame_index}.\nError: {e}")
     create_velocity_video(frames=dest_folder)

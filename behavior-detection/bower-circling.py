@@ -4,7 +4,6 @@
     @author: mikster36
     @date: 10/2/23
 """
-import itertools
 import math
 import os
 from dataclasses import dataclass
@@ -83,6 +82,27 @@ def in_focus(x, y, mask_x, mask_y, width, height):
     return mask_x <= x <= mask_x + width and mask_y <= y <= mask_y + height
 
 
+def rotate(dx, dy, angle):
+    rad = math.radians(angle)
+    ndx = dx * math.cos(rad) + dy * math.sin(rad)
+    ndy = -dx * math.sin(rad) + dy * math.cos(rad)
+    return ndx, ndy
+
+
+def check_direction(vel: Vel, other: list[Vel], debug=False):
+    avg_vel: np.ndarray = np.array((1/len(other)) * sum(item.direction for item in other))
+    avg_vel = avg_vel / np.linalg.norm(avg_vel)
+    l_bound = rotate(avg_vel[0], avg_vel[1], 225)
+    r_bound = rotate(avg_vel[0], avg_vel[1], 135)
+    a_cross_b = l_bound[0] * vel.direction[1] - l_bound[1] * vel.direction[0]
+    a_cross_c = l_bound[0] * r_bound[1] - l_bound[1] * r_bound[0]
+    c_cross_b = r_bound[0] * vel.direction[1] - r_bound[1] * vel.direction[0]
+    c_cross_a = r_bound[0] * l_bound[1] - r_bound[1] * l_bound[0]
+    if a_cross_b * a_cross_c >= 0 and c_cross_b * c_cross_a >= 0:
+        if debug: print(f"Altered direction.\nPrevious direction: {vel.direction}\nNew direction: {avg_vel}")
+        vel.direction = avg_vel
+
+
 def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfolder: str, show=False,
                     xy=None, dimensions=None, show_mask=False):
     """
@@ -99,6 +119,15 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
             xy: tuple - (x, y) coordinates of the bottom left of the rectangle mask (area in focus)
             dimensions: tuple - (width, height) of the rectangle mask (area in focus)
             show_mask: bool - whether to display the mask on the produced image
+
+        Coordinate system:
+                     img.width
+             (0, 0) - - - - - - >
+                   .
+        img.height .   (x, y)**
+                   .
+                   v
+        ** when plotting, this becomes (x, img.height - y) to conform to matplotlib's coordinate system
     """
     img = Image.open(frame)
     img_data = np.flipud(np.array(img))
@@ -109,9 +138,9 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
     if dimensions is None:
         dimensions = (img.width, img.height)
     if xy is None:
-        xy = (img.width, img.height)
+        xy = (0, 0)
     if show_mask:
-        ax.add_patch(patches.Rectangle(xy=(199, img.height - 240), width=dimensions[0], height=-dimensions[1],
+        ax.add_patch(patches.Rectangle(xy=(xy[0], img.height - xy[1]), width=dimensions[0], height=-dimensions[1],
                                        alpha=0.2, fill=True, color="white"))
 
     for key, fish in fishes.items():
@@ -120,19 +149,22 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
                     mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
             ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
                     fontsize='xx-small')
+        check_direction(fish.vel[2], fish.vel[:2], debug=True)
         # plot each body part's velocity
         for velocity, position in zip(fish.vel, fish.position):
             x, y = position
-            y = img.height - y
-            if not in_focus(x, y, xy[0], img.height - xy[1], dimensions[0], dimensions[1]):
+            if not in_focus(x, y, xy[0], xy[1], dimensions[0], dimensions[1]):
                 continue
             # large change in position is likely not a correct track
             elif velocity.magnitude > img.width / 4 or velocity.magnitude > img.height / 4:
                 break
+            velocity.magnitude = 10 if velocity.magnitude < 10 else velocity.magnitude
             dx, dy = velocity.magnitude * velocity.direction
             dy = -dy
-            ax.add_patch(patches.Arrow(x, y, dx=dx, dy=dy, width=5, color='white'))
-            ax.plot(x, y, marker='.', color=fishcolor, markersize=1)
+            ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
+                    fontsize='xx-small')
+            ax.add_patch(patches.Arrow(x, img.height - y, dx=dx, dy=dy, width=5, color='white'))
+            ax.plot(x, img.height - y, marker='.', color=fishcolor, markersize=1)
 
     ax.plot()
     ax.set_xlim(0, img.width)
@@ -254,7 +286,7 @@ if __name__ == "__main__":
     nframes = tracklets.shape[0] - start_index
     width = int(math.log10(nframes)) + 1
     smooth_velocity = True
-    t = 6 if smooth_velocity else 2
+    t = 4 if smooth_velocity else 2
 
     frames = [frames[i + start_index] for i in range(nframes)]
 
@@ -277,7 +309,7 @@ if __name__ == "__main__":
             frame_num = f"{(frame_index):0{width}d}"
             try:
                 plot_velocities(frame=frame_path, frame_num=frame_num, fishes=frame, destfolder=dest_folder,
-                                show=False, xy=(197, 1071), dimensions=(938, 698))
+                                show=False, xy=(170, 230), dimensions=(930, 708))
                 print(f"Successfully plotted velocities for frame {frame_index}.")
             except Exception as e:
                 print(f"Could not plot velocities for frame {frame_index}.\nError: {e}")

@@ -7,24 +7,19 @@
 import math
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Union
+import subprocess as s
 
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
+import cv2
 
 import pandas as pd
 import numpy as np
+from numpy import ndarray, dtype, generic
 
-filepath_h5 = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/"
-               r"bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el_filtered.h5")
-filepath_pickle = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
-                   r"/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_assemblies.pickle")
-video = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
-         r"/bower_circling/bower_circlingDLC_dlcrnetms5_dlc_modelJul26shuffle4_100000_el_filtered_id_labeled.mp4")
-out = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/bower_circling"
-       r"/labeled-frames")
 matplotlib.use("TKAgg")
 
 
@@ -40,31 +35,18 @@ class Fish:
     vel: list[Vel]
 
 
-def read_video(video: str, output: str):
-    import cv2
+def video_to_frames(video: str):
     vid = cv2.VideoCapture(video)
     success, image = vid.read()
     count = 0
+    output = os.path.join(os.path.dirname(video), "frames")
+    if not os.path.exists(output):
+        os.mkdir(output)
     while success:
         cv2.imwrite(f"{os.path.join(output, f'frame{count}.png')}", image)
         success, image = vid.read()
         print('Read a new frame: ', success)
         count += 1
-
-
-def create_velocity_video(frames: str, framerate=30):
-    # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
-    import subprocess as s
-    wd = os.getcwd()
-    os.chdir(frames)
-    args = ['ffmpeg', '-framerate', str(framerate), '-pattern_type', 'glob', '-i',
-            os.path.join(frames, "*.png"), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
-            os.path.join(frames, "velocity.mp4")]
-    try:
-        s.call(args=args, cwd=wd)
-        print("Video successfully created.")
-    except Exception as e:
-        print(f"Video could not be successfully created.\nError: {e}")
 
 
 def show_nframes(frames: str, n: int):
@@ -78,11 +60,20 @@ def show_nframes(frames: str, n: int):
     cv2.destroyAllWindows()
 
 
-def in_focus(x, y, mask_x, mask_y, width, height):
+def point_in_focus(x, y, mask_x, mask_y, width, height) -> bool:
     return mask_x <= x <= mask_x + width and mask_y <= y <= mask_y + height
 
 
-def rotate(dx, dy, angle):
+def fish_in_focus(fish, mask_xy: tuple, dimensions: tuple) -> bool:
+    if dimensions is None:
+        return True
+    for cluster in fish:
+        if not point_in_focus(cluster[0], cluster[1], mask_xy[0], mask_xy[1], dimensions[0], dimensions[1]):
+            return False
+    return True
+
+
+def rotate(dx, dy, angle) -> tuple[float, float]:
     rad = math.radians(angle)
     ndx = dx * math.cos(rad) + dy * math.sin(rad)
     ndy = -dx * math.sin(rad) + dy * math.cos(rad)
@@ -92,8 +83,8 @@ def rotate(dx, dy, angle):
 def check_direction(vel: Vel, other: list[Vel], debug=False):
     avg_vel: np.ndarray = np.array((1/len(other)) * sum(item.direction for item in other))
     avg_vel = avg_vel / np.linalg.norm(avg_vel)
-    l_bound = rotate(avg_vel[0], avg_vel[1], 225)
-    r_bound = rotate(avg_vel[0], avg_vel[1], 135)
+    l_bound = rotate(avg_vel[0], avg_vel[1], 270)
+    r_bound = rotate(avg_vel[0], avg_vel[1], 90)
     a_cross_b = l_bound[0] * vel.direction[1] - l_bound[1] * vel.direction[0]
     a_cross_c = l_bound[0] * r_bound[1] - l_bound[1] * r_bound[0]
     c_cross_b = r_bound[0] * vel.direction[1] - r_bound[1] * vel.direction[0]
@@ -145,18 +136,15 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
 
     for key, fish in fishes.items():
         fishcolor = color.get(key)
-        if in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
-                    mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
+        if point_in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
+                          mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
             ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
                     fontsize='xx-small')
-        check_direction(fish.vel[2], fish.vel[:2], debug=True)
         # plot each body part's velocity
         for velocity, position in zip(fish.vel, fish.position):
             x, y = position
-            if not in_focus(x, y, xy[0], xy[1], dimensions[0], dimensions[1]):
-                continue
             # large change in position is likely not a correct track
-            elif velocity.magnitude > img.width / 4 or velocity.magnitude > img.height / 4:
+            if velocity.magnitude > img.width / 4 or velocity.magnitude > img.height / 4:
                 break
             velocity.magnitude = 10 if velocity.magnitude < 10 else velocity.magnitude
             dx, dy = velocity.magnitude * velocity.direction
@@ -181,7 +169,7 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
     plt.close()
 
 
-def get_centroid(xy_coords: list[tuple]):
+def get_centroid(xy_coords: list[tuple]) -> np.ndarray:
     x_sum, y_sum = 0, 0
     for i in xy_coords:
         if i[0] == 0 or i[0] is np.nan or i[1] == 0 or i[1] is np.nan:
@@ -191,7 +179,7 @@ def get_centroid(xy_coords: list[tuple]):
     return np.array([x_sum / len(xy_coords), y_sum / len(xy_coords)])
 
 
-def get_approximations(frame):
+def get_approximations(frame) -> dict[Any, ndarray[Any, dtype[Union[Union[generic, generic], Any]]]]:
     """
         Approximates each fish in a frame to three clusters: front, middle, tail
 
@@ -216,7 +204,7 @@ def get_approximations(frame):
     return bodies
 
 
-def get_velocities(pi: np.ndarray, pf: np.ndarray, t: int):
+def get_single_velocities(pi: np.ndarray, pf: np.ndarray, t: int) -> tuple[Vel, Vel, Vel]:
     """
     Gets the velocity of a fish in a frame by calculating the velocity of each body mass
 
@@ -235,7 +223,7 @@ def get_velocities(pi: np.ndarray, pf: np.ndarray, t: int):
             Vel(tail_vel / np.linalg.norm(tail_vel), np.linalg.norm(tail_vel)))
 
 
-def df_to_reshaped_list(df: pd.DataFrame):
+def df_to_reshaped_list(df: pd.DataFrame) -> list[dict[Fish: np.ndarray]]:
     """
     By default, the *_el.h5 file is stored as a DataFrame with a shape and organisation
     similar to how the csv file looks, i.e.
@@ -267,7 +255,7 @@ def df_to_reshaped_list(df: pd.DataFrame):
     return frames
 
 
-def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t):
+def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t) -> bool:
     fish_in_curr = set(frames[t - 1].keys())
     fish_in_prev = set(frames[0].keys())
     for i in range(1, len(frames)):
@@ -275,20 +263,30 @@ def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t):
     return bool(fish_in_curr & fish_in_prev)
 
 
-if __name__ == "__main__":
-    frames_path = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520/"
-                   r"bower_circling/frames")
-    dest_folder = (r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc26_2_Tk63_022520"
-                   r"/bower_circling/velocities/")
-    tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(filepath_h5))
+def _create_velocity_video(frames: str, fps=30):
+    import subprocess as s
+    wd = os.getcwd()
+    os.chdir(frames)
+    args = ['ffmpeg', '-framerate', str(fps), '-pattern_type', 'glob', '-i',
+            os.path.join(frames, "*.png"), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+            os.path.join(frames, "velocity.mp4")]
+    try:
+        s.call(args=args, cwd=wd)
+        print("Video successfully created.")
+    except Exception as e:
+        print(f"Video could not be successfully created.\nError: {e}")
+
+
+def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=None,
+                   mask_xy=(0, 0), mask_dimensions=None, save_as_csv=False) -> list[dict]:
+    tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
     frames = df_to_reshaped_list(tracklets)
-    start_index = 0
-    nframes = tracklets.shape[0] - start_index
-    width = int(math.log10(nframes)) + 1
-    smooth_velocity = True
-    t = 4 if smooth_velocity else 2
+    nframes = nframes if nframes is not None else tracklets.shape[0] - start_index
+    nwidth = int(math.log10(nframes)) + 1
 
     frames = [frames[i + start_index] for i in range(nframes)]
+    allframes = []
+    t = smooth_factor + 1
 
     for i in range(t - 1, nframes, t - 1):
         t_frames = frames[i - t + 1:i + 1]
@@ -297,20 +295,38 @@ if __name__ == "__main__":
             continue
         pi, pf = bodies[0], bodies[t - 1]
         # gets the velocities of fish appearing in all t frames
-        avg_vels = {key: get_velocities(pi.get(key), pf.get(key), t)
+        avg_vels = {key: get_single_velocities(pi.get(key), pf.get(key), t - 1)
                     for key in pf.keys() if key in pi}
         prev_frames = []
         for body in bodies[:t - 1]:  # can't plot velocity for the last frame
-            prev_frames.append({fish: Fish(position=body.get(fish), vel=vel) for fish, vel in avg_vels.items()})
+            prev_frames.append({fish: Fish(position=body.get(fish), vel=vel)
+                                for fish, vel in avg_vels.items() if
+                                fish_in_focus(body.get(fish), mask_xy, mask_dimensions)})
         for j, frame in enumerate(prev_frames):
             frame_index = i + j + start_index - (t - 1)
-            frame_path = os.path.join(frames_path, f"frame{frame_index}.png")
             # adjust frame number to be 0...0n instead of n
-            frame_num = f"{(frame_index):0{width}d}"
+            frame_num = f"frame{frame_index :0{nwidth}d}"
+            allframes.append({frame_num: frame})
+
+    return allframes
+
+
+def create_velocity_video(video_path: str, tracklets_path: str, velocities=None, dest_folder=None, smooth_factor=1,
+                          start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=30,
+                          save_as_csv=False):
+    # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
+    frames_path = os.path.join(os.path.dirname(video_path), "frames")
+    vel_path = dest_folder if dest_folder is not None else os.path.join(os.path.dirname(tracklets_path), "velocities")
+    frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
+                                nframes, mask_xy, mask_dimensions, save_as_csv)
+    for frame in frames:
+        for frame_num, fishes in frame.items():
+            frame_path = os.path.join(frames_path, f"{frame_num}.png")
             try:
-                plot_velocities(frame=frame_path, frame_num=frame_num, fishes=frame, destfolder=dest_folder,
-                                show=False, xy=(170, 230), dimensions=(930, 708))
-                print(f"Successfully plotted velocities for frame {frame_index}.")
+                plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=vel_path, show=False,
+                                xy=mask_xy, dimensions=mask_dimensions, show_mask=show_mask)
+                print(f"Successfully saved velocities for {frame_num}.")
             except Exception as e:
-                print(f"Could not plot velocities for frame {frame_index}.\nError: {e}")
-    create_velocity_video(frames=dest_folder)
+                print(f"Could not plot velocities for {frame_num}.\nError: {e}")
+
+    _create_velocity_video(frames=frames_path, fps=fps)

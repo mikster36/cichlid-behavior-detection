@@ -50,7 +50,6 @@ def video_to_frames(video: str):
 
 
 def show_nframes(frames: str, n: int):
-    import cv2
     for i in range(n):
         image = cv2.imread(f"{os.path.join(frames, f'frame{i}.png')}")
         window_name = f'frame{i}'
@@ -263,8 +262,7 @@ def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t) -> bool:
     return bool(fish_in_curr & fish_in_prev)
 
 
-def _create_velocity_video(frames: str, fps=30):
-    import subprocess as s
+def _create_velocity_video(frames: str, fps=29):
     wd = os.getcwd()
     os.chdir(frames)
     args = ['ffmpeg', '-framerate', str(fps), '-pattern_type', 'glob', '-i',
@@ -278,14 +276,14 @@ def _create_velocity_video(frames: str, fps=30):
 
 
 def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=None,
-                   mask_xy=(0, 0), mask_dimensions=None, save_as_csv=False) -> list[dict]:
+                   mask_xy=(0, 0), mask_dimensions=None, save_as_csv=False) -> dict[str: dict]:
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
     frames = df_to_reshaped_list(tracklets)
     nframes = nframes if nframes is not None else tracklets.shape[0] - start_index
     nwidth = int(math.log10(nframes)) + 1
 
     frames = [frames[i + start_index] for i in range(nframes)]
-    allframes = []
+    allframes = {}
     t = smooth_factor + 1
 
     for i in range(t - 1, nframes, t - 1):
@@ -306,27 +304,26 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
             frame_index = i + j + start_index - (t - 1)
             # adjust frame number to be 0...0n instead of n
             frame_num = f"frame{frame_index :0{nwidth}d}"
-            allframes.append({frame_num: frame})
+            allframes.update({frame_num: frame})
 
     return allframes
 
 
 def create_velocity_video(video_path: str, tracklets_path: str, velocities=None, dest_folder=None, smooth_factor=1,
-                          start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=30,
+                          start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=29,
                           save_as_csv=False):
     # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
     frames_path = os.path.join(os.path.dirname(video_path), "frames")
     vel_path = dest_folder if dest_folder is not None else os.path.join(os.path.dirname(tracklets_path), "velocities")
     frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
                                 nframes, mask_xy, mask_dimensions, save_as_csv)
-    for frame in frames:
-        for frame_num, fishes in frame.items():
-            frame_path = os.path.join(frames_path, f"{frame_num}.png")
-            try:
-                plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=vel_path, show=False,
-                                xy=mask_xy, dimensions=mask_dimensions, show_mask=show_mask)
-                print(f"Successfully saved velocities for {frame_num}.")
-            except Exception as e:
-                print(f"Could not plot velocities for {frame_num}.\nError: {e}")
+    for frame_num, fishes in frames.items():
+        frame_path = os.path.join(frames_path, f"{frame_num}.png")
+        try:
+            plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=vel_path, show=False,
+                            xy=mask_xy, dimensions=mask_dimensions, show_mask=show_mask)
+            print(f"Successfully saved velocities for {frame_num}.")
+        except Exception as e:
+            print(f"Could not plot velocities for {frame_num}.\nError: {e}")
 
     _create_velocity_video(frames=frames_path, fps=fps)

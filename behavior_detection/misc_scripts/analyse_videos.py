@@ -1,11 +1,11 @@
 from pathlib import Path
-from train_network import kill_and_reset
+#from behavior_detection.misc_scripts.train_network import kill_and_reset
+import behavior_detection.misc_scripts.ffmpeg_split as ffmpeg_split
 
 import pandas as pd
 import deeplabcut as dlc
 import subprocess
 
-import ffmpeg_split
 import random
 import os
 
@@ -62,10 +62,10 @@ def generate_random_clips(videos=[], clip_length=10, n=10):
         return
     for video in videos:
         temp_dir = str(Path(video).parent)
-        if not os.path.exists(os.path.join(temp_dir, "testing")):
-            os.mkdir(os.path.join(temp_dir, "testing"))
+        if not os.path.exists(os.path.join(temp_dir, "../testing")):
+            os.mkdir(os.path.join(temp_dir, "../testing"))
         vid_length = ffmpeg_split.get_video_length(video)
-        temp_dir = os.path.join(temp_dir, "testing")
+        temp_dir = os.path.join(temp_dir, "../testing")
         for i in range(n):
             if os.path.exists(os.path.join(temp_dir, f"testing{i}")):
                 print(f'test{i} already exits. Skipping...')
@@ -134,7 +134,7 @@ def short_testing():
             for vid_folder in os.scandir(f):
                 vid = os.path.join(vid_folder.path, f"{os.path.basename(vid_folder).replace('ing', '')}.mp4")
                 n_fish = analyze_video(config_path, vid)
-                kill_and_reset()
+                #kill_and_reset()
                 displayedinidividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
                 dlc.plot_trajectories(config_path, [vid], shuffle=4,
                                       displayedindividuals=displayedinidividuals)
@@ -142,11 +142,9 @@ def short_testing():
                                          displayedindividuals=displayedinidividuals, color_by="individual")
 
 
-if __name__ == "__main__":
-    config_path = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/config.yaml'
-    vid = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc36_2_Tk3_030320/0001_vid.mp4'
+def analyse_videos(config_path, vid):
     n_fish = analyze_video(config_path, vid)
-    kill_and_reset()
+    #kill_and_reset()
     displayedinidividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
     dlc.plot_trajectories(config_path, [vid], shuffle=4,
                           displayedindividuals=displayedinidividuals)

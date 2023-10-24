@@ -42,11 +42,13 @@ def video_to_frames(video: str):
     output = os.path.join(os.path.dirname(video), "frames")
     if not os.path.exists(output):
         os.mkdir(output)
+    if len(os.listdir(output)) > 0:
+        return output
     while success:
         cv2.imwrite(f"{os.path.join(output, f'frame{count}.png')}", image)
         success, image = vid.read()
-        print('Read a new frame: ', success)
         count += 1
+    return output
 
 
 def show_nframes(frames: str, n: int):
@@ -313,12 +315,16 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
                           start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=29,
                           save_as_csv=False):
     # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
-    frames_path = os.path.join(os.path.dirname(video_path), "frames")
+    frames_path = video_to_frames(video_path)
     vel_path = dest_folder if dest_folder is not None else os.path.join(os.path.dirname(tracklets_path), "velocities")
+    if not os.path.exists(vel_path):
+        os.mkdir(vel_path)
     frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
                                 nframes, mask_xy, mask_dimensions, save_as_csv)
+    i = 0
     for frame_num, fishes in frames.items():
-        frame_path = os.path.join(frames_path, f"{frame_num}.png")
+        frame_path = os.path.join(frames_path, f"frame{i}.png")
+        i += 1
         try:
             plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=vel_path, show=False,
                             xy=mask_xy, dimensions=mask_dimensions, show_mask=show_mask)

@@ -64,6 +64,19 @@ def show_nframes(frames: str, n: int):
 def point_in_focus(x, y, mask_x, mask_y, width, height) -> bool:
     return mask_x <= x <= mask_x + width and mask_y <= y <= mask_y + height
 
+def shift_from_edge(x, y, width, height, debug=False) -> tuple:
+    x_out = x
+    y_out = y
+    if x >= width - 80:
+        x_out -= 80
+    if y <= 10:
+        y_out += 10
+    if y >= height - 80:
+        y_out -= 80
+    if debug and (x != x_out or y != y_out):
+        print(f"Old x, y: {(x, y)}. New x, y: {(x_out, y_out)}")
+    return x_out, y_out
+
 
 def fish_in_focus(fish, mask_xy: tuple, dimensions: tuple) -> bool:
     if dimensions is None:
@@ -93,6 +106,7 @@ def check_direction(vel: Vel, other: list[Vel], debug=False):
     if a_cross_b * a_cross_c >= 0 and c_cross_b * c_cross_a >= 0:
         if debug: print(f"Altered direction.\nPrevious direction: {vel.direction}\nNew direction: {avg_vel}")
         vel.direction = avg_vel
+    return vel
 
 
 def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfolder: str, show=False,
@@ -139,19 +153,19 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
         fishcolor = color.get(key)
         if point_in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
                           mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
-            ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
+            text_xy = shift_from_edge(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1],
+                                      width=img.width, height=img.height, debug=True)
+            ax.text(x=text_xy[0], y=text_xy[1], s=key, color='white',
                     fontsize='xx-small')
         # plot each body part's velocity
         for velocity, position in zip(fish.vel, fish.position):
             x, y = position
             # large change in position is likely not a correct track
-            if velocity.magnitude > img.width / 4 or velocity.magnitude > img.height / 4:
+            if velocity.magnitude >= img.width / 6 or velocity.magnitude > img.height / 6:
                 break
             velocity.magnitude = 10 if velocity.magnitude < 10 else velocity.magnitude
             dx, dy = velocity.magnitude * velocity.direction
             dy = -dy
-            ax.text(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1], s=key, color='white',
-                    fontsize='xx-small')
             ax.add_patch(patches.Arrow(x, img.height - y, dx=dx, dy=dy, width=5, color='white'))
             ax.plot(x, img.height - y, marker='.', color=fishcolor, markersize=1)
 
@@ -299,6 +313,8 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
                     for key in pf.keys() if key in pi}
         prev_frames = []
         for body in bodies[:t - 1]:  # can't plot velocity for the last frame
+            for fish, vels in avg_vels.items():
+                check_direction(vels[-1], vels[:-1], debug=True)
             prev_frames.append({fish: Fish(position=body.get(fish), vel=vel)
                                 for fish, vel in avg_vels.items() if
                                 fish_in_focus(body.get(fish), mask_xy, mask_dimensions)})
@@ -308,12 +324,14 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
             frame_num = f"frame{frame_index :0{nwidth}d}"
             allframes.update({frame_num: frame})
 
+    if len(allframes) > 0:
+        print("Added velocities to tracklets.")
     return allframes
 
 
 def create_velocity_video(video_path: str, tracklets_path: str, velocities=None, dest_folder=None, smooth_factor=1,
                           start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=29,
-                          save_as_csv=False):
+                          save_as_csv=False, overwrite=False):
     # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
     frames_path = video_to_frames(video_path)
     vel_path = dest_folder if dest_folder is not None else os.path.join(os.path.dirname(tracklets_path), "velocities")
@@ -322,14 +340,19 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
     frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
                                 nframes, mask_xy, mask_dimensions, save_as_csv)
     i = 0
+    vel_directory = os.listdir(vel_path)
+    if len([frame for frame in vel_directory if frame.endswith(".png")]) == len(frames) and not overwrite:
+        print("Velocities already plotted. Exiting...")
+        return
+
     for frame_num, fishes in frames.items():
         frame_path = os.path.join(frames_path, f"frame{i}.png")
         i += 1
         try:
             plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=vel_path, show=False,
                             xy=mask_xy, dimensions=mask_dimensions, show_mask=show_mask)
-            print(f"Successfully saved velocities for {frame_num}.")
+            print(f"Successfully plotted velocities for {frame_num}.")
         except Exception as e:
             print(f"Could not plot velocities for {frame_num}.\nError: {e}")
 
-    _create_velocity_video(frames=frames_path, fps=fps)
+

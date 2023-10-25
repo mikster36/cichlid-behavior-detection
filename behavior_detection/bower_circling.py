@@ -35,6 +35,14 @@ class Fish:
     vel: list[Vel]
 
 
+@dataclass
+class Track:
+    a: Fish
+    b: Fish
+    start: str
+    length: int
+
+
 def video_to_frames(video: str):
     vid = cv2.VideoCapture(video)
     success, image = vid.read()
@@ -63,6 +71,7 @@ def show_nframes(frames: str, n: int):
 
 def point_in_focus(x, y, mask_x, mask_y, width, height) -> bool:
     return mask_x <= x <= mask_x + width and mask_y <= y <= mask_y + height
+
 
 def shift_from_edge(x, y, width, height, debug=False) -> tuple:
     x_out = x
@@ -95,7 +104,7 @@ def rotate(dx, dy, angle) -> tuple[float, float]:
 
 
 def check_direction(vel: Vel, other: list[Vel], debug=False):
-    avg_vel: np.ndarray = np.array((1/len(other)) * sum(item.direction for item in other))
+    avg_vel: np.ndarray = np.array((1 / len(other)) * sum(item.direction for item in other))
     avg_vel = avg_vel / np.linalg.norm(avg_vel)
     l_bound = rotate(avg_vel[0], avg_vel[1], 270)
     r_bound = rotate(avg_vel[0], avg_vel[1], 90)
@@ -338,7 +347,7 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
     if not os.path.exists(vel_path):
         os.mkdir(vel_path)
     frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
-                                nframes, mask_xy, mask_dimensions, save_as_csv)
+                                                                      nframes, mask_xy, mask_dimensions, save_as_csv)
     i = 0
     vel_directory = os.listdir(vel_path)
     if len([frame for frame in vel_directory if frame.endswith(".png")]) == len(frames) and not overwrite:
@@ -356,3 +365,28 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
             print(f"Could not plot velocities for {frame_num}.\nError: {e}")
 
 
+def track_bower_circling(frames: dict[str: dict[str: Fish]]):
+    tracks = {}
+    for frame_num, frame in frames.items():
+        fish_nums = list(frame.keys())
+        fishes = list(frame.values())
+        # check every combination of fish and exit when one pair is made (BC cannot happen between more than two fish)
+        # this may be changed later if correct pairs are being missed
+        for i in range(len(fishes) - 1):
+            a = fishes[i]
+            a_pos = get_centroid(a.position)
+            for j in range(i + 1, len(fishes)):
+                b = fishes[j]
+                b_pos = get_centroid(b.position)
+                # fish are within 100 px of one another
+                if np.linalg.norm(a_pos - b_pos) < 100:
+                    tracks.update({fish_nums[i]: Track(a=a, b=b, start=frame_num, length=1)})
+
+    print(tracks)
+
+
+if __name__ == "__main__":
+    frames = {"frame001": {"fish1": Fish(position=np.array([[1, 2], [2, 3], [4, 5]]), vel=None),
+                           "fish2": Fish(position=np.array([[6, 6], [5, 5], [4, 4]]), vel=None),
+                           "fish3": Fish(position=np.array([[10, 10], [11, 11], [12, 12]]), vel=None), }}
+    track_bower_circling(frames)

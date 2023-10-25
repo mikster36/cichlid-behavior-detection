@@ -61,7 +61,7 @@ class BehavioralClip:
              1 and 2 are in bounds, whereas 3, 4, and 5 are out of bounds and ignored
 
         Returns:
-            dict[String: dict]: a dictionary where the keys are frame numbers and its values are a dictionary
+            dict[str: dict]: a dictionary where the keys are frame numbers and its values are a dictionary
             with fish numbers as keys and Fish objects as values (a Fish object has position and velocity)
         """
         self.velocities = bc.get_velocities(tracklets_path=self.tracklets, smooth_factor=smooth_factor, mask_xy=mask_xy,

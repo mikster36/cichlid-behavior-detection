@@ -31,6 +31,7 @@ class Vel:
 
 @dataclass
 class Fish:
+    id: str
     position: Any
     vel: list[Vel]
 
@@ -370,23 +371,52 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]]):
     for frame_num, frame in frames.items():
         fish_nums = list(frame.keys())
         fishes = list(frame.values())
+        matched = set()
         # check every combination of fish and exit when one pair is made (BC cannot happen between more than two fish)
         # this may be changed later if correct pairs are being missed
         for i in range(len(fishes) - 1):
+            if fish_nums[i] in matched:
+                continue
             a = fishes[i]
-            a_pos = get_centroid(a.position)
-            for j in range(i + 1, len(fishes)):
-                b = fishes[j]
-                b_pos = get_centroid(b.position)
-                # fish are within 100 px of one another
-                if np.linalg.norm(a_pos - b_pos) < 100:
-                    tracks.update({fish_nums[i]: Track(a=a, b=b, start=frame_num, length=1)})
 
+            for j in range(i + 1, len(fishes)):
+                if fish_nums[j] in matched:  # this fish already has a pair, so skip
+                    continue
+
+                b = fishes[j]
+                distance = np.linalg.norm(a.position - b.position)
+                if distance > 100:  # fish must be within 100 px of one another
+                    continue
+
+                ahead_btail = np.linalg.norm(a.position[0] - b.position[-1])
+                atail_bhead = np.linalg.norm(a.position[-1] - b.position[0])
+                # a's head must be close to b's tail and a's tail must be close to b's head
+                if ahead_btail > 50 or atail_bhead > 50:
+                    continue
+                if (fish_nums[i] not in matched or  # fish doesn't have a match (should be ensured by previous checks)
+                        distance < np.linalg.norm(tracks.get(a).a.position - tracks.get(a).b.position)):
+                    if tracks.get(fish_nums[i]):
+                        tracks[fish_nums[i]].length += 1
+                    else:
+                        tracks.update({fish_nums[i]: Track(a=a, b=b, start=frame_num, length=1)})
+                    matched.add(fish_nums[i])
+                    matched.add(fish_nums[j])
+                    break
     print(tracks)
 
 
 if __name__ == "__main__":
-    frames = {"frame001": {"fish1": Fish(position=np.array([[1, 2], [2, 3], [4, 5]]), vel=None),
-                           "fish2": Fish(position=np.array([[6, 6], [5, 5], [4, 4]]), vel=None),
-                           "fish3": Fish(position=np.array([[10, 10], [11, 11], [12, 12]]), vel=None), }}
+    frames = {"frame001": {
+        "fish1": Fish(id="fish1", position=np.array([[1, 2], [2, 3], [4, 5]]), vel=None),
+        "fish2": Fish(id="fish2", position=np.array([[600, 600], [500, 500], [400, 400]]), vel=None),
+        "fish5": Fish(id="fish5", position=np.array([[13, 10], [14, 14], [16, 17]]), vel=None),
+        "fish3": Fish(id="fish3", position=np.array([[10, 10], [11, 11], [12, 12]]), vel=None),
+        "fish4": Fish(id="fish4", position=np.array([[11, 9], [15, 11], [12, 16]]), vel=None)
+    }, "frame002": {
+        "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+        "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+        "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+        "fish3": Fish(id="fish3", position=np.array([[14, 12], [15, 13], [11, 10]]), vel=None),
+        "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
+    }}
     track_bower_circling(frames)

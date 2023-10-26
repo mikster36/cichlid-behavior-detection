@@ -6,6 +6,7 @@
 """
 import math
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any, Union
 import subprocess as s
@@ -38,10 +39,39 @@ class Fish:
 
 @dataclass
 class Track:
+    """
+        This is a class to store data for a potential bower circling track
+
+        Attributes:
+            a: Fish
+                the fish object representing the first fish in the pair
+            b: Fish
+                the fish object representing the second fish in the pair
+            start: str
+                which frame the track began on
+            end: str
+                which frame the track ends on / was last updated on
+            length: int
+                the number of consecutive frames for which the track has existed
+    """
     a: Fish
     b: Fish
     start: str
+    end: str
     length: int
+
+    def is_dead(self, frame: str, t: int):
+        curr_frame = str_to_int(frame)
+        prev_frame = str_to_int(self.end)
+        return curr_frame - prev_frame > t
+
+
+def str_to_int(s: str):
+    out = str()
+    for c in s:
+        if c.isdigit():
+            out += c
+    return int(out)
 
 
 def video_to_frames(video: str):
@@ -325,7 +355,7 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
         for body in bodies[:t - 1]:  # can't plot velocity for the last frame
             for fish, vels in avg_vels.items():
                 check_direction(vels[-1], vels[:-1], debug=True)
-            prev_frames.append({fish: Fish(position=body.get(fish), vel=vel)
+            prev_frames.append({fish: Fish(id=fish, position=body.get(fish), vel=vel)
                                 for fish, vel in avg_vels.items() if
                                 fish_in_focus(body.get(fish), mask_xy, mask_dimensions)})
         for j, frame in enumerate(prev_frames):
@@ -366,7 +396,13 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
             print(f"Could not plot velocities for {frame_num}.\nError: {e}")
 
 
+def prettify(a: dict[str: Track]):
+    for k, v in a.items():
+        print(f"{k}-{v.b.id} | Start: {v.start} | Track length: {v.length}")
+
+
 def track_bower_circling(frames: dict[str: dict[str: Fish]]):
+    print("Began tracking bower circling incidents...")
     tracks = {}
     for frame_num, frame in frames.items():
         fish_nums = list(frame.keys())
@@ -378,6 +414,8 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]]):
             if fish_nums[i] in matched:
                 continue
             a = fishes[i]
+            min_dist = sys.maxsize
+            closest_b = None
 
             for j in range(i + 1, len(fishes)):
                 if fish_nums[j] in matched:  # this fish already has a pair, so skip
@@ -385,38 +423,90 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]]):
 
                 b = fishes[j]
                 distance = np.linalg.norm(a.position - b.position)
-                if distance > 100:  # fish must be within 100 px of one another
+                if distance > 250:  # fish must be within 200 px of one another
                     continue
 
                 ahead_btail = np.linalg.norm(a.position[0] - b.position[-1])
                 atail_bhead = np.linalg.norm(a.position[-1] - b.position[0])
                 # a's head must be close to b's tail and a's tail must be close to b's head
-                if ahead_btail > 50 or atail_bhead > 50:
+                if ahead_btail > 180 or atail_bhead > 180:
                     continue
-                if (fish_nums[i] not in matched or  # fish doesn't have a match (should be ensured by previous checks)
-                        distance < np.linalg.norm(tracks.get(a).a.position - tracks.get(a).b.position)):
-                    if tracks.get(fish_nums[i]):
-                        tracks[fish_nums[i]].length += 1
-                    else:
-                        tracks.update({fish_nums[i]: Track(a=a, b=b, start=frame_num, length=1)})
-                    matched.add(fish_nums[i])
-                    matched.add(fish_nums[j])
+
+                # track already exists, so we'll update it if it's not dead
+                if tracks.get(a.id) and tracks[a.id].b.id == b.id and not tracks[a.id].is_dead(frame_num, 18):
+                    tracks[a.id].length += (str_to_int(frame_num) - str_to_int(tracks[a.id].end))
+                    tracks[a.id].end = frame_num
+                    matched.add(a.id)
+                    matched.add(b.id)
                     break
-    print(tracks)
+
+                # only add the closest a and b pair if no pair has been made yet
+                if distance > min_dist:
+                    continue
+
+                min_dist = distance
+                closest_b = j
+
+            if closest_b is None:
+                continue
+            if not tracks.get(a.id):
+                tracks.update({a.id: Track(a=a, b=fishes[closest_b], start=frame_num, end=frame_num, length=1)})
+                matched.add(a.id)
+                matched.add(fish_nums[closest_b])
+    prettify(tracks)
 
 
 if __name__ == "__main__":
-    frames = {"frame001": {
-        "fish1": Fish(id="fish1", position=np.array([[1, 2], [2, 3], [4, 5]]), vel=None),
-        "fish2": Fish(id="fish2", position=np.array([[600, 600], [500, 500], [400, 400]]), vel=None),
-        "fish5": Fish(id="fish5", position=np.array([[13, 10], [14, 14], [16, 17]]), vel=None),
-        "fish3": Fish(id="fish3", position=np.array([[10, 10], [11, 11], [12, 12]]), vel=None),
-        "fish4": Fish(id="fish4", position=np.array([[11, 9], [15, 11], [12, 16]]), vel=None)
-    }, "frame002": {
-        "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
-        "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
-        "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
-        "fish3": Fish(id="fish3", position=np.array([[14, 12], [15, 13], [11, 10]]), vel=None),
-        "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
-    }}
+    frames = {
+        "frame001": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 2], [2, 3], [4, 5]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[600, 600], [500, 500], [400, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[13, 10], [14, 14], [16, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[10, 10], [11, 11], [12, 12]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[11, 9], [15, 11], [12, 16]]), vel=None)
+        },
+        "frame002": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[14, 12], [15, 13], [11, 10]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
+        },
+        "frame003": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[100, 12], [150, 130], [110, 100]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
+        },
+        "frame004": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[100, 12], [150, 130], [110, 100]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
+        },
+        "frame005": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[100, 12], [150, 130], [110, 100]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
+        },
+        "frame006": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[100, 12], [150, 130], [110, 100]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None)
+        },
+        "frame007": {
+            "fish1": Fish(id="fish1", position=np.array([[1, 3], [2, 4], [4, 6]]), vel=None),
+            "fish2": Fish(id="fish2", position=np.array([[650, 600], [550, 500], [450, 400]]), vel=None),
+            "fish5": Fish(id="fish5", position=np.array([[14, 10], [15, 14], [17, 17]]), vel=None),
+            "fish3": Fish(id="fish3", position=np.array([[14, 12], [15, 13], [11, 10]]), vel=None),
+            "fish4": Fish(id="fish4", position=np.array([[9, 8], [12, 11], [15, 14]]), vel=None),
+            "fish6": Fish(id="fish6", position=np.array([[10, 9], [12, 11], [15, 14]]), vel=None)
+        }
+    }
     track_bower_circling(frames)

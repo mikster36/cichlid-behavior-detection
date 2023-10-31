@@ -8,18 +8,18 @@ pd.options.mode.chained_assignment = None  # default='warn'
 
 labeled_data = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/labeled-data/'
 
-"""
-    Gets the average length of a cichlid from a trial based on labeled annotations
-
-    Parameters
-    frames: String paths to a .csv file of annotated data
-
-    Returns
-    A float representing the average length of a cichlid
-
-"""
 
 def euclidean_distance(row):
+    """
+        Gets the average length of a cichlid from a trial based on labeled annotations
+
+        Parameters
+        frames: String paths to a .csv file of annotated data
+
+        Returns
+        A float representing the average length of a cichlid
+
+    """
     sum = 0
     for i in range(0, row.size - 2, 2):
         x1, y1, x2, y2 = row.iloc[i], row.iloc[i + 1], row.iloc[i + 2], row.iloc[i + 3]
@@ -29,19 +29,17 @@ def euclidean_distance(row):
     return sum
 
 
-"""
-    Gets the average length of a cichlid from a trial based on labeled annotations
-    
-    Parameters
-    frames: String paths to a .csv file of annotated data
-    
-    Returns
-    A float representing the average length of a cichlid
-    
-"""
-
-
 def avg_cichlid_length(frame):
+    """
+        Gets the average length of a cichlid from a trial based on labeled annotations
+
+        Parameters
+        frames: String paths to a .csv file of annotated data
+
+        Returns
+        A float representing the average length of a cichlid
+
+    """
     labels = pd.read_csv(frame, header=1)
     # get nose and backfin coordinates only
     labels = labels.loc[:, (labels.iloc[0] == 'nose') | (labels.iloc[0] == 'backfin') | (labels.iloc[0] == 'spine1')

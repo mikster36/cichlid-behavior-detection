@@ -29,7 +29,7 @@ class BehavioralClip:
 
     def __init__(self, clip_path: str, tracklets: str):
         self.clip = clip_path
-        self.tracklets = tracklets
+        self.tracklets_path = tracklets
         self.velocities = None
 
     def calculate_velocities(self,
@@ -61,10 +61,10 @@ class BehavioralClip:
              1 and 2 are in bounds, whereas 3, 4, and 5 are out of bounds and ignored
 
         Returns:
-            dict[String: dict]: a dictionary where the keys are frame numbers and its values are a dictionary
+            dict[str: dict]: a dictionary where the keys are frame numbers and its values are a dictionary
             with fish numbers as keys and Fish objects as values (a Fish object has position and velocity)
         """
-        self.velocities = bc.get_velocities(tracklets_path=self.tracklets, smooth_factor=smooth_factor, mask_xy=mask_xy,
+        self.velocities = bc.get_velocities(tracklets_path=self.tracklets_path, smooth_factor=smooth_factor, mask_xy=mask_xy,
                                             mask_dimensions=mask_dimensions, save_as_csv=save_as_csv)
         return self.velocities
 
@@ -101,7 +101,7 @@ class BehavioralClip:
         if self.velocities is None:
             self.velocities = self.calculate_velocities(smooth_factor=smooth_factor, mask_xy=mask_xy,
                                                         mask_dimensions=mask_dimensions, save_as_csv=save_as_csv)
-        bc.create_velocity_video(video_path=self.clip, tracklets_path=self.tracklets, fps=fps,
+        bc.create_velocity_video(video_path=self.clip, tracklets_path=self.tracklets_path, fps=fps,
                                  velocities=self.velocities, dest_folder=dest_folder, smooth_factor=smooth_factor,
                                  start_index=start_index, nframes=nframes, mask_xy=mask_xy,
                                  mask_dimensions=mask_dimensions, show_mask=show_mask, overwrite=overwrite)

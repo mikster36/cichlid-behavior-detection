@@ -22,6 +22,7 @@ import numpy as np
 from numpy import ndarray, dtype, generic
 
 matplotlib.use("TKAgg")
+np.seterr(divide='ignore', invalid='ignore')
 
 
 @dataclass
@@ -194,7 +195,7 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
         if point_in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
                           mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
             text_xy = shift_from_edge(x=fish.position[0][0] + 8, y=img.height - fish.position[0][1],
-                                      width=img.width, height=img.height, debug=True)
+                                      width=img.width, height=img.height)
             ax.text(x=text_xy[0], y=text_xy[1], s=key, color='white',
                     fontsize='xx-small')
         # plot each body part's velocity
@@ -354,7 +355,7 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
         prev_frames = []
         for body in bodies[:t - 1]:  # can't plot velocity for the last frame
             for fish, vels in avg_vels.items():
-                check_direction(vels[-1], vels[:-1], debug=True)
+                check_direction(vels[-1], vels[:-1])
             prev_frames.append({fish: Fish(id=fish, position=body.get(fish), vel=vel)
                                 for fish, vel in avg_vels.items() if
                                 fish_in_focus(body.get(fish), mask_xy, mask_dimensions)})
@@ -395,18 +396,36 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
         except Exception as e:
             print(f"Could not plot velocities for {frame_num}.\nError: {e}")
 
+    _create_velocity_video(frames_path, fps)
+
 
 def prettify(a: dict[str: Track]):
     for k, v in a.items():
         print(f"{k}-{v.b.id} | Start: {v.start} | Track length: {v.length}")
 
 
-def track_bower_circling(frames: dict[str: dict[str: Fish]]):
+def a_directed_towards_b(a: Fish, b: Fish, threshold=60) -> bool:
+    """
+        Checks if the velocity of a's front is directed towards b's tail
+        **Note that this method is not symmetric, a directed towards b does not imply that b is directed towards a
+    """
+    theta = math.radians(threshold)
+    u = a.vel[0].direction
+    v = b.position[-1] - a.position[0]
+    v /= np.linalg.norm(v)
+    return abs(np.arccos(np.dot(u, v))) < theta
+
+
+def track_bower_circling(frames: dict[str: dict[str: Fish]], proximity=250, head_tail_proximity=180, track_length=18,
+                         threshold=60):
     print("Began tracking bower circling incidents...")
     tracks = {}
     for frame_num, frame in frames.items():
         fish_nums = list(frame.keys())
         fishes = list(frame.values())
+        # bower circling can only happen between at least two fish
+        if len(fishes) < 2:
+            continue
         matched = set()
         # check every combination of fish and exit when one pair is made (BC cannot happen between more than two fish)
         # this may be changed later if correct pairs are being missed
@@ -415,7 +434,7 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]]):
                 continue
             a = fishes[i]
             min_dist = sys.maxsize
-            closest_b = None
+            closest_b = -1
 
             for j in range(i + 1, len(fishes)):
                 if fish_nums[j] in matched:  # this fish already has a pair, so skip
@@ -423,17 +442,23 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]]):
 
                 b = fishes[j]
                 distance = np.linalg.norm(a.position - b.position)
-                if distance > 250:  # fish must be within 200 px of one another
+                if distance > proximity:  # fish must be close
                     continue
 
                 ahead_btail = np.linalg.norm(a.position[0] - b.position[-1])
                 atail_bhead = np.linalg.norm(a.position[-1] - b.position[0])
                 # a's head must be close to b's tail and a's tail must be close to b's head
-                if ahead_btail > 180 or atail_bhead > 180:
+                if ahead_btail > head_tail_proximity or atail_bhead > head_tail_proximity:
+                    continue
+
+                # if a velocity magnitude check becomes necessary, place it here
+
+                # a's front should be directed towards b's tail, and b's front should be directed towards a's tail
+                if not (a_directed_towards_b(a, b, threshold) and a_directed_towards_b(b, a, threshold)):
                     continue
 
                 # track already exists, so we'll update it if it's not dead
-                if tracks.get(a.id) and tracks[a.id].b.id == b.id and not tracks[a.id].is_dead(frame_num, 18):
+                if tracks.get(a.id) and tracks[a.id].b.id == b.id and not tracks[a.id].is_dead(frame_num, track_length):
                     tracks[a.id].length += (str_to_int(frame_num) - str_to_int(tracks[a.id].end))
                     tracks[a.id].end = frame_num
                     matched.add(a.id)
@@ -447,13 +472,21 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]]):
                 min_dist = distance
                 closest_b = j
 
-            if closest_b is None:
+            if closest_b == -1:
                 continue
             if not tracks.get(a.id):
                 tracks.update({a.id: Track(a=a, b=fishes[closest_b], start=frame_num, end=frame_num, length=1)})
                 matched.add(a.id)
                 matched.add(fish_nums[closest_b])
+
+    bower_circling_incidents = [track for track in tracks if track.length >= 80]
+
+    if len(bower_circling_incidents) == 0:
+        print("No tracks found.")
+        return None
+
     prettify(tracks)
+    return bower_circling_incidents
 
 
 if __name__ == "__main__":

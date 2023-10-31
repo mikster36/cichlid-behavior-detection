@@ -105,3 +105,22 @@ class BehavioralClip:
                                  velocities=self.velocities, dest_folder=dest_folder, smooth_factor=smooth_factor,
                                  start_index=start_index, nframes=nframes, mask_xy=mask_xy,
                                  mask_dimensions=mask_dimensions, show_mask=show_mask, overwrite=overwrite)
+
+    def check_bower_circling(self,
+                             proximity=250,
+                             head_tail_proximity=180,
+                             threshold=60,
+                             track_length=18):
+        """
+        Checks to see if bower circling occurs in this clip
+
+        Args:
+            proximity: how close (in px) a pair of fish should be for potential bower circling to occur
+            head_tail_proximity: how close a fish's tail must be to the head of another fish (and vice versa)
+            for potential bower circling to occur
+            threshold: the margin of error (in degrees) of which the head of one fish can point towards the tail of
+            another fish. This is used to determine if a fish's head is reasonably directed toward another fish's tail
+            track_length: how many frames of unmet above criteria before considering a track 'dead'. This should be
+            smaller if your velocities and position data is robust
+        """
+        bc.track_bower_circling(self.velocities, proximity, head_tail_proximity, track_length, threshold)

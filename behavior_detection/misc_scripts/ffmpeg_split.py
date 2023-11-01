@@ -107,6 +107,8 @@ def split_by_seconds(filename, split_length, vcodec="copy", acodec="copy",
         fileext = filename.split(".")[-1]
     except IndexError as e:
         raise IndexError("No . in filename. Error: " + str(e))
+
+    width = int(math.log10(split_count)) + 1
     for n in range(0, split_count):
         split_args = []
         if n == 0:
@@ -114,7 +116,7 @@ def split_by_seconds(filename, split_length, vcodec="copy", acodec="copy",
         else:
             split_start = split_length * n
 
-        batch = filebase[:filebase.rindex('/') + 1] + f"batches/batch{n + 1}/"
+        batch = filebase[:filebase.rindex('/') + 1] + f"batches/batch{n :0{width}:d}/"
         if not os.path.exists(batch):
             os.mkdir(batch)
         split_args += ["-ss", str(split_start), "-t", str(split_length),

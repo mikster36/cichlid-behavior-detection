@@ -7,7 +7,7 @@ training_iterations = [100000, 150000]
 
 project_path = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26"
 config_path = f"{project_path}/config.yaml"
-password_path = "/home/bree_student/anaconda3/envs/dlc/cichlid-behavior_detection/password.yaml"
+password_path = r"/home/bree_student/anaconda3/envs/dlc/cichlid-behavior-detection/password.yaml"
 with open(password_path, 'r') as f:
     sudo_password = yaml.safe_load(f)['password']
 sudo_password += '\n'

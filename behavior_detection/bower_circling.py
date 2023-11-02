@@ -7,8 +7,8 @@
 import math
 import os
 import sys
+import typing
 from dataclasses import dataclass
-from typing import Any, Union
 import subprocess as s
 
 import matplotlib
@@ -17,9 +17,10 @@ import matplotlib.patches as patches
 from PIL import Image
 import cv2
 
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
-from numpy import ndarray, dtype, generic
+from behavior_detection.misc_scripts.ffmpeg_split import get_video_length
 
 matplotlib.use("TKAgg")
 np.seterr(divide='ignore', invalid='ignore')
@@ -34,8 +35,8 @@ class Vel:
 @dataclass
 class Fish:
     id: str
-    position: Any
-    vel: list[Vel]
+    position: typing.Any
+    vel: typing.List[Vel]
     bc: bool
 
 
@@ -76,17 +77,20 @@ def str_to_int(s: str):
     return int(out)
 
 
-def video_to_frames(video: str):
+def video_to_frames(video: str, fps: int):
+    print("Getting frames from video...")
     vid = cv2.VideoCapture(video)
     success, image = vid.read()
-    count = 0
+    total_frames = fps * get_video_length(video)
+    width = int(math.log10(total_frames)) + 1
     output = os.path.join(os.path.dirname(video), "frames")
+    count = 0
     if not os.path.exists(output):
         os.mkdir(output)
     if len(os.listdir(output)) > 0:
         return output
     while success:
-        cv2.imwrite(f"{os.path.join(output, f'frame{count}.png')}", image)
+        cv2.imwrite(os.path.join(output, f'frame{count:0{width}d}.png'), image)
         success, image = vid.read()
         count += 1
     return output
@@ -129,14 +133,14 @@ def fish_in_focus(fish, mask_xy: tuple, dimensions: tuple) -> bool:
     return True
 
 
-def rotate(dx, dy, angle) -> tuple[float, float]:
+def rotate(dx, dy, angle) -> typing.Tuple[float, float]:
     rad = math.radians(angle)
     ndx = dx * math.cos(rad) + dy * math.sin(rad)
     ndy = -dx * math.sin(rad) + dy * math.cos(rad)
     return ndx, ndy
 
 
-def check_direction(vel: Vel, other: list[Vel], debug=False):
+def check_direction(vel: Vel, other: typing.List[Vel], debug=False):
     avg_vel: np.ndarray = np.array((1 / len(other)) * sum(item.direction for item in other))
     avg_vel = avg_vel / np.linalg.norm(avg_vel)
     l_bound = rotate(avg_vel[0], avg_vel[1], 270)
@@ -151,7 +155,7 @@ def check_direction(vel: Vel, other: list[Vel], debug=False):
     return vel
 
 
-def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfolder: str, show=False,
+def plot_velocities(frame: str, frame_num: str, fishes: typing.Dict[typing.AnyStr, Fish], destfolder: str, show=False,
                     xy=None, dimensions=None, show_mask=False):
     """
         Plots the velocities of each fish in a given area of focus. Since there are likely fish outside
@@ -192,6 +196,10 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
                                        alpha=0.2, fill=True, color="white"))
 
     for key, fish in fishes.items():
+        """if fish.bc:
+            ax.text(x=fish.position[0][0] - 8, y=img.height - fish.position[0][1] - 10,
+                    s="Bower circling", color="white", fontsize="medium")
+        """
         fishcolor = color.get(key)
         if point_in_focus(x=fish.position[0][0], y=img.height - fish.position[0][1],
                           mask_x=xy[0], mask_y=xy[1], width=dimensions[0], height=dimensions[1]):
@@ -219,14 +227,14 @@ def plot_velocities(frame: str, frame_num: str, fishes: dict[str: Fish], destfol
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
-    plt.savefig(os.path.join(destfolder, f"{frame_num}-velocities.png"),
+    plt.savefig(os.path.join(destfolder, f"{frame_num}.png"),
                 dpi=300, bbox_inches='tight', pad_inches=0)
     if show:
         plt.imshow()
     plt.close()
 
 
-def get_centroid(xy_coords: list[tuple]) -> np.ndarray:
+def get_centroid(xy_coords: typing.List[typing.Tuple]) -> np.ndarray:
     x_sum, y_sum = 0, 0
     for i in xy_coords:
         if i[0] == 0 or i[0] is np.nan or i[1] == 0 or i[1] is np.nan:
@@ -236,7 +244,7 @@ def get_centroid(xy_coords: list[tuple]) -> np.ndarray:
     return np.array([x_sum / len(xy_coords), y_sum / len(xy_coords)])
 
 
-def get_approximations(frame) -> dict[Any, ndarray[Any, dtype[Union[Union[generic, generic], Any]]]]:
+def get_approximations(frame) -> typing.Dict[typing.Any, np.ndarray]:
     """
         Approximates each fish in a frame to three clusters: front, middle, tail
 
@@ -261,7 +269,7 @@ def get_approximations(frame) -> dict[Any, ndarray[Any, dtype[Union[Union[generi
     return bodies
 
 
-def get_single_velocities(pi: np.ndarray, pf: np.ndarray, t: int) -> tuple[Vel, Vel, Vel]:
+def get_single_velocities(pi: np.ndarray, pf: np.ndarray, t: int) -> typing.Tuple[Vel, Vel, Vel]:
     """
     Gets the velocity of a fish in a frame by calculating the velocity of each body mass
 
@@ -280,7 +288,7 @@ def get_single_velocities(pi: np.ndarray, pf: np.ndarray, t: int) -> tuple[Vel, 
             Vel(tail_vel / np.linalg.norm(tail_vel), np.linalg.norm(tail_vel)))
 
 
-def df_to_reshaped_list(df: pd.DataFrame) -> list[dict[Fish: np.ndarray]]:
+def df_to_reshaped_list(df: pd.DataFrame) -> typing.List[typing.Dict[Fish, np.ndarray]]:
     """
     By default, the *_el.h5 file is stored as a DataFrame with a shape and organisation
     similar to how the csv file looks, i.e.
@@ -312,7 +320,7 @@ def df_to_reshaped_list(df: pd.DataFrame) -> list[dict[Fish: np.ndarray]]:
     return frames
 
 
-def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t) -> bool:
+def same_fishes_in_t_frames(frames: typing.List[typing.Dict[typing.AnyStr, np.ndarray]], t) -> bool:
     fish_in_curr = set(frames[t - 1].keys())
     fish_in_prev = set(frames[0].keys())
     for i in range(1, len(frames)):
@@ -320,7 +328,7 @@ def same_fishes_in_t_frames(frames: list[dict[str: np.ndarray]], t) -> bool:
     return bool(fish_in_curr & fish_in_prev)
 
 
-def _create_velocity_video(frames: str, fps=29):
+def _create_velocity_video(frames: str, fps: int):
     wd = os.getcwd()
     os.chdir(frames)
     args = ['ffmpeg', '-framerate', str(fps), '-pattern_type', 'glob', '-i',
@@ -334,7 +342,7 @@ def _create_velocity_video(frames: str, fps=29):
 
 
 def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=None,
-                   mask_xy=(0, 0), mask_dimensions=None, save_as_csv=False) -> dict[str: dict]:
+                   mask_xy=(0, 0), mask_dimensions=None, save_as_csv=False) -> typing.Dict[typing.AnyStr, typing.Dict]:
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
     frames = df_to_reshaped_list(tracklets)
     nframes = nframes if nframes is not None else tracklets.shape[0] - start_index
@@ -344,7 +352,7 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
     allframes = {}
     t = smooth_factor + 1
 
-    for i in range(t - 1, nframes, t - 1):
+    for i in tqdm(range(t - 1, nframes, t - 1), desc="Getting velocities..."):
         t_frames = frames[i - t + 1:i + 1]
         bodies = [get_approximations(frame) for frame in t_frames]
         if not same_fishes_in_t_frames(bodies, t):
@@ -368,6 +376,8 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
 
     if len(allframes) > 0:
         print("Added velocities to tracklets.")
+    else:
+        print("Could not add velocities to tracklets.")
     return allframes
 
 
@@ -375,32 +385,35 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
                           start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=29,
                           save_as_csv=False, overwrite=False):
     # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
-    frames_path = video_to_frames(video_path)
+    frames_path = video_to_frames(video_path, fps)
     vel_path = dest_folder if dest_folder is not None else os.path.join(os.path.dirname(tracklets_path), "velocities")
     if not os.path.exists(vel_path):
         os.mkdir(vel_path)
     frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
                                                                       nframes, mask_xy, mask_dimensions, save_as_csv)
-    i = 0
     vel_directory = os.listdir(vel_path)
     if len([frame for frame in vel_directory if frame.endswith(".png")]) == len(frames) and not overwrite:
         print("Velocities already plotted. Exiting...")
         return
 
-    for frame_num, fishes in frames.items():
-        frame_path = os.path.join(frames_path, f"frame{i}.png")
-        i += 1
+    for frame_num, fishes in tqdm(frames.items(), desc="Plotting velocities..."):
+        frame_path = os.path.join(frames_path, f"{frame_num}.png")
         try:
             plot_velocities(frame=frame_path, frame_num=frame_num, fishes=fishes, destfolder=vel_path, show=False,
                             xy=mask_xy, dimensions=mask_dimensions, show_mask=show_mask)
-            print(f"Successfully plotted velocities for {frame_num}.")
         except Exception as e:
-            print(f"Could not plot velocities for {frame_num}.\nError: {e}")
+            print(f"Could not plot velocities for {frame_num}. {e}")
+            continue
 
-    _create_velocity_video(frames_path, fps)
+    if overwrite:
+        path = os.path.join(vel_path, "velocities.mp4")
+        if os.path.exists(path):
+            os.remove(path)
+
+    _create_velocity_video(vel_path, fps)
 
 
-def prettify(a: dict[str: Track]):
+def prettify(a: typing.Dict[typing.AnyStr, Track]):
     for k, v in a.items():
         print(f"{k}-{v.b.id} | Start: {v.start} | End: {v.end} | Track length: {v.length}")
 
@@ -417,11 +430,10 @@ def a_directed_towards_b(a: Fish, b: Fish, threshold=60) -> bool:
     return abs(np.arccos(np.dot(u, v))) < theta
 
 
-def track_bower_circling(frames: dict[str: dict[str: Fish]], proximity: int, head_tail_proximity: int, track_length: int,
-                         threshold: int):
-    print("Tracking bower circling incidents...")
+def track_bower_circling(frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]], proximity: int,
+                         head_tail_proximity: int, track_age: int, threshold: int, bower_circling_length: int):
     tracks = {}
-    for frame_num, frame in frames.items():
+    for frame_num, frame in tqdm(frames.items(), desc="Tracking bower circling incidents..."):
         fish_nums = list(frame.keys())
         fishes = list(frame.values())
         # bower circling can only happen between at least two fish
@@ -459,7 +471,7 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]], proximity: int, hea
                     continue
 
                 # track already exists, so we'll update it if it's not dead
-                if tracks.get(a.id) and tracks[a.id].b.id == b.id and not tracks[a.id].is_dead(frame_num, track_length):
+                if tracks.get(a.id) and tracks[a.id].b.id == b.id and not tracks[a.id].is_dead(frame_num, track_age):
                     tracks[a.id].length += (str_to_int(frame_num) - str_to_int(tracks[a.id].end))
                     tracks[a.id].end = frame_num
                     matched.add(a.id)
@@ -480,7 +492,7 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]], proximity: int, hea
                 matched.add(a.id)
                 matched.add(fish_nums[closest_b])
 
-    bower_circling_incidents = [track for track in tracks.values() if track.length >= 80]
+    bower_circling_incidents = [track for track in tracks.values() if track.length >= bower_circling_length]
 
     if len(bower_circling_incidents) == 0:
         print("No bower circling incidents found.")
@@ -493,6 +505,19 @@ def track_bower_circling(frames: dict[str: dict[str: Fish]], proximity: int, hea
             frames[f"frame{i:0{width}d}"][incident.a.id].bc = True
             frames[f"frame{i:0{width}d}"][incident.b.id].bc = True
 
-    print(f"Added {len(bower_circling_incidents)} bower circling track to frames data.")
+    print(f"Added {len(bower_circling_incidents)} bower circling track(s) to frames data.")
 
     return bower_circling_incidents
+
+
+def extract_bower_circling_clips(video: str, fps: int, frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]]):
+    frames_path = video_to_frames(video, fps)
+    for frame in frames:
+            flag = False
+            for fish in frame:
+                if fish.bc:
+                    flag = True
+                    break
+
+            if flag:
+                print(frame)

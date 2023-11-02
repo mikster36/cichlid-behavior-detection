@@ -79,7 +79,6 @@ def get_video_length(filename):
     output = subprocess.check_output(("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
                                       "default=noprint_wrappers=1:nokey=1", filename)).strip()
     video_length = int(float(output))
-    print("Video length in seconds: " + str(video_length))
 
     return video_length
 

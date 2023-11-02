@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+import typing
 from pathlib import Path
 from behavior_detection.misc_scripts.train_network import kill_and_reset
 import behavior_detection.misc_scripts.ffmpeg_split as ffmpeg_split
@@ -62,16 +64,16 @@ def generate_random_clips(videos=[], clip_length=10, n=10):
         return
     for video in videos:
         temp_dir = str(Path(video).parent)
-        if not os.path.exists(os.path.join(temp_dir, "../testing")):
-            os.mkdir(os.path.join(temp_dir, "../testing"))
+        if not os.path.exists(os.path.join(temp_dir, "../../tests")):
+            os.mkdir(os.path.join(temp_dir, "../../tests"))
         vid_length = ffmpeg_split.get_video_length(video)
-        temp_dir = os.path.join(temp_dir, "../testing")
+        temp_dir = os.path.join(temp_dir, "../../tests")
         for i in range(n):
-            if os.path.exists(os.path.join(temp_dir, f"testing{i}")):
+            if os.path.exists(os.path.join(temp_dir, f"tests{i}")):
                 print(f'test{i} already exits. Skipping...')
                 continue
-            os.mkdir(os.path.join(temp_dir, f"testing{i}"))
-            temp_dir = os.path.join(temp_dir, f"testing{i}")
+            os.mkdir(os.path.join(temp_dir, f"tests{i}"))
+            temp_dir = os.path.join(temp_dir, f"tests{i}")
             start_time = int(random.random() * (vid_length - clip_length))
             args = ['ffmpeg',
                     '-ss', format_time(start_time),
@@ -127,7 +129,7 @@ def fix_individual_names(video_path):
     df.to_hdf(h5_path, "df_with_missing", format="table", mode="w")
 
 
-def analyse_videos(config_path, videos: list[str], shuffle=1, plot_trajectories=False, create_labeled_video=False,
+def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, plot_trajectories=False, create_labeled_video=False,
                    debug=False):
     for vid in videos:
         n_fish = analyze_video(config_path, vid, debug)

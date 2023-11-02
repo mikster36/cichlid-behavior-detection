@@ -1,3 +1,5 @@
+import typing
+
 import behavior_detection.bower_circling as bc
 import behavior_detection.misc_scripts.maskGUI as mask
 
@@ -44,9 +46,21 @@ class BehavioralClip:
     * this will be prompted via a GUI
     """
 
-    def __init__(self, clip_path: str, tracklets: str, headless=False):
+    def __init__(self, clip_path: str, config=None, shuffle=None, tracklets=None, headless=False):
         self.clip = clip_path
-        self.tracklets_path = tracklets
+        if tracklets is None:
+            # Analyse video if it hasn't been analysed
+            import behavior_detection.misc_scripts.analyse_videos as analysis
+            import os, glob
+            analysis.analyse_videos(config, [clip_path], shuffle=shuffle)
+            self.tracklets_path = glob.glob(os.path.dirname(clip_path)+'*filtered.h5')
+            for file in os.listdir(os.path.dirname(clip_path)):
+                if file.endswith('filtered.h5'):
+                    self.tracklets_path = os.path.join(os.path.dirname(clip_path), file)
+            if self.tracklets_path is None:
+                print("Tracklets (*_filtered.h5 file) not found.")
+        else:
+            self.tracklets_path = tracklets
         self.frames = None
         if headless:
             x = int(input("X:"))
@@ -55,11 +69,12 @@ class BehavioralClip:
             l = int(input("Length: "))
             self.mask_xy = (x, y)
             self.mask_dimensions = (w, l)
-        self.mask_xy, self.mask_dimensions = mask.get_mask(clip_path)
+        else:
+            self.mask_xy, self.mask_dimensions = mask.get_mask(clip_path)
 
     def calculate_velocities(self,
                              smooth_factor=1,
-                             save_as_csv=False) -> list[dict]:
+                             save_as_csv=False) -> typing.Dict[typing.AnyStr, typing.Dict]:
         """
         Gets the velocity of all fish across all frames where each fish is seen in all {smooth_factor + 1} frames
 
@@ -117,17 +132,25 @@ class BehavioralClip:
                              proximity=250,
                              head_tail_proximity=180,
                              threshold=60,
-                             track_length=18):
+                             track_age=18,
+                             bower_circling_length=30):
         """
         Checks to see if bower circling occurs in this clip
 
         Args:
-            proximity: how close (in px) a pair of fish should be for potential bower circling to occur
-            head_tail_proximity: how close a fish's tail must be to the head of another fish (and vice versa)
-            for potential bower circling to occur
-            threshold: the margin of error (in degrees) of which the head of one fish can point towards the tail of
-            another fish. This is used to determine if a fish's head is reasonably directed toward another fish's tail
-            track_length: how many frames of unmet above criteria before considering a track 'dead'. This should be
-            smaller if your velocities and position data is robust
+            proximity: int
+                how close (in px) a pair of fish should be for potential bower circling to occur
+            head_tail_proximity: int
+                how close a fish's tail must be to the head of another fish (and vice versa)
+                for potential bower circling to occur
+            threshold: int
+                the margin of error (in degrees) of which the head of one fish can point towards the tail of
+                another fish. This is used to determine if a fish's head is reasonably directed toward another fish's tail
+            track_age: int
+                how many frames of unmet above criteria before considering a track 'dead'. This should be
+                smaller if your velocities and position data is robust
+            bower_circling_length: int
+                the minimum length a track can be before it is considered a bower circling incident
         """
-        bc.track_bower_circling(self.frames, proximity, head_tail_proximity, track_length, threshold)
+        bc.track_bower_circling(self.frames, proximity, head_tail_proximity, track_age, threshold, bower_circling_length)
+

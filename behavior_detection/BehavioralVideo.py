@@ -4,9 +4,9 @@ import behavior_detection.bower_circling as bc
 import behavior_detection.misc_scripts.maskGUI as mask
 
 
-class BehavioralClip:
+class BehavioralVideo:
     """
-    A class to represent a clip of a certain behavior
+    A class to represent a video containing any amount of behavioral incidents
     That behavior can be one of the following:
     Aggressive:
         - chase / flee
@@ -15,8 +15,8 @@ class BehavioralClip:
 
     Attributes
     ----------
-    clip: str
-        the path to a video of a behavior
+    video: str
+        the path to a video
     tracklets_path: str
         the path to the tracklets file associated with a clip (file that ends with *_{el/bo/sk}.h5)
     frames: list[dict]
@@ -46,17 +46,17 @@ class BehavioralClip:
     * this will be prompted via a GUI
     """
 
-    def __init__(self, clip_path: str, config=None, shuffle=None, tracklets=None, headless=False):
-        self.clip = clip_path
+    def __init__(self, video_path: str, config=None, shuffle=None, tracklets=None, headless=False):
+        self.video = video_path
         if tracklets is None:
             # Analyse video if it hasn't been analysed
             import behavior_detection.misc_scripts.analyse_videos as analysis
             import os, glob
-            analysis.analyse_videos(config, [clip_path], shuffle=shuffle)
-            self.tracklets_path = glob.glob(os.path.dirname(clip_path)+'*filtered.h5')
-            for file in os.listdir(os.path.dirname(clip_path)):
+            analysis.analyse_videos(config, [video_path], shuffle=shuffle)
+            self.tracklets_path = glob.glob(os.path.dirname(video_path) + '*filtered.h5')
+            for file in os.listdir(os.path.dirname(video_path)):
                 if file.endswith('filtered.h5'):
-                    self.tracklets_path = os.path.join(os.path.dirname(clip_path), file)
+                    self.tracklets_path = os.path.join(os.path.dirname(video_path), file)
             if self.tracklets_path is None:
                 print("Tracklets (*_filtered.h5 file) not found.")
         else:
@@ -70,7 +70,7 @@ class BehavioralClip:
             self.mask_xy = (x, y)
             self.mask_dimensions = (w, l)
         else:
-            self.mask_xy, self.mask_dimensions = mask.get_mask(clip_path)
+            self.mask_xy, self.mask_dimensions = mask.get_mask(video_path)
 
     def calculate_velocities(self,
                              smooth_factor=1,
@@ -123,7 +123,7 @@ class BehavioralClip:
         """
         if self.frames is None:
             self.frames = self.calculate_velocities(smooth_factor=smooth_factor, save_as_csv=save_as_csv)
-        bc.create_velocity_video(video_path=self.clip, tracklets_path=self.tracklets_path, fps=fps,
+        bc.create_velocity_video(video_path=self.video, tracklets_path=self.tracklets_path, fps=fps,
                                  velocities=self.frames, dest_folder=dest_folder, smooth_factor=smooth_factor,
                                  start_index=start_index, nframes=nframes, mask_xy=self.mask_xy,
                                  mask_dimensions=self.mask_dimensions, show_mask=show_mask, overwrite=overwrite)
@@ -133,7 +133,8 @@ class BehavioralClip:
                              head_tail_proximity=180,
                              threshold=60,
                              track_age=18,
-                             bower_circling_length=30):
+                             bower_circling_length=30,
+                             extract_clips=True):
         """
         Checks to see if bower circling occurs in this clip
 
@@ -152,5 +153,6 @@ class BehavioralClip:
             bower_circling_length: int
                 the minimum length a track can be before it is considered a bower circling incident
         """
-        bc.track_bower_circling(self.frames, proximity, head_tail_proximity, track_age, threshold, bower_circling_length)
+        bc.track_bower_circling(self.video, self.frames, proximity, head_tail_proximity, track_age, threshold,
+                                bower_circling_length, extract_clips)
 

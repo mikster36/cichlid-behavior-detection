@@ -10,6 +10,7 @@ import sys
 import typing
 from dataclasses import dataclass
 import subprocess as s
+from datetime import timedelta
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -77,11 +78,11 @@ def str_to_int(s: str):
     return int(out)
 
 
-def video_to_frames(video: str, fps: int):
+def video_to_frames(video: str):
     print("Getting frames from video...")
     vid = cv2.VideoCapture(video)
     success, image = vid.read()
-    total_frames = fps * get_video_length(video)
+    total_frames = int(get_video_fps(video) * get_video_length(video))
     width = int(math.log10(total_frames)) + 1
     output = os.path.join(os.path.dirname(video), "frames")
     count = 0
@@ -94,6 +95,11 @@ def video_to_frames(video: str, fps: int):
         success, image = vid.read()
         count += 1
     return output
+
+
+def get_video_fps(video: str):
+    vid = cv2.VideoCapture(video)
+    return vid.get(cv2.CAP_PROP_FPS)
 
 
 def show_nframes(frames: str, n: int):
@@ -328,10 +334,10 @@ def same_fishes_in_t_frames(frames: typing.List[typing.Dict[typing.AnyStr, np.nd
     return bool(fish_in_curr & fish_in_prev)
 
 
-def _create_velocity_video(frames: str, fps: int):
+def _create_velocity_video(frames: str):
     wd = os.getcwd()
     os.chdir(frames)
-    args = ['ffmpeg', '-framerate', str(fps), '-pattern_type', 'glob', '-i',
+    args = ['ffmpeg', '-framerate', str(get_video_fps(frames)), '-pattern_type', 'glob', '-i',
             os.path.join(frames, "*.png"), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
             os.path.join(frames, "velocity.mp4")]
     try:
@@ -382,10 +388,10 @@ def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=
 
 
 def create_velocity_video(video_path: str, tracklets_path: str, velocities=None, dest_folder=None, smooth_factor=1,
-                          start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False, fps=29,
+                          start_index=0, nframes=None, mask_xy=(0, 0), mask_dimensions=None, show_mask=False,
                           save_as_csv=False, overwrite=False):
     # Only use this function after generating frames for the whole video. Otherwise, a shorter video will be made
-    frames_path = video_to_frames(video_path, fps)
+    frames_path = video_to_frames(video_path)
     vel_path = dest_folder if dest_folder is not None else os.path.join(os.path.dirname(tracklets_path), "velocities")
     if not os.path.exists(vel_path):
         os.mkdir(vel_path)
@@ -406,11 +412,11 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
             continue
 
     if overwrite:
-        path = os.path.join(vel_path, "velocities.mp4")
+        path = os.path.join(vel_path, "velocity.mp4")
         if os.path.exists(path):
             os.remove(path)
 
-    _create_velocity_video(vel_path, fps)
+    _create_velocity_video(vel_path)
 
 
 def prettify(a: typing.Dict[typing.AnyStr, Track]):
@@ -430,8 +436,10 @@ def a_directed_towards_b(a: Fish, b: Fish, threshold=60) -> bool:
     return abs(np.arccos(np.dot(u, v))) < theta
 
 
-def track_bower_circling(frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]], proximity: int,
-                         head_tail_proximity: int, track_age: int, threshold: int, bower_circling_length: int):
+def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]],
+                         proximity: int,
+                         head_tail_proximity: int, track_age: int, threshold: int, bower_circling_length: int,
+                         extract_clips: bool):
     tracks = {}
     for frame_num, frame in tqdm(frames.items(), desc="Tracking bower circling incidents..."):
         fish_nums = list(frame.keys())
@@ -507,17 +515,24 @@ def track_bower_circling(frames: typing.Dict[typing.AnyStr, typing.Dict[typing.A
 
     print(f"Added {len(bower_circling_incidents)} bower circling track(s) to frames data.")
 
+    if not extract_clips:
+        return bower_circling_incidents
+
+    if video is None or len(video) == 0 or not os.path.exists(video):
+        raise TypeError("Video path cannot be empty.")
+
+    output_dir = os.path.join(os.path.dirname(video), "bower-circling-clips")
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+
+    fps = get_video_fps(video)
+
+    for incident in tqdm(bower_circling_incidents, "Extracting bower circling clips..."):
+        start = str(timedelta(seconds=(str_to_int(incident.start) / fps)))
+        end = str(timedelta(seconds=(str_to_int(incident.end)) / fps))
+        length = str(timedelta(seconds=(incident.length / fps)))
+        out_file = os.path.join(output_dir, f"{start[:10]}-{end[:10]}.mp4")
+        s.call(['ffmpeg', '-ss', start, '-accurate_seek', '-i', video, '-t', length, '-c:v', 'libx264',
+                '-c:a', 'aac', out_file])
+
     return bower_circling_incidents
-
-
-def extract_bower_circling_clips(video: str, fps: int, frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]]):
-    frames_path = video_to_frames(video, fps)
-    for frame in frames:
-            flag = False
-            for fish in frame:
-                if fish.bc:
-                    flag = True
-                    break
-
-            if flag:
-                print(frame)

@@ -78,7 +78,7 @@ def split_by_manifest(filename, manifest, vcodec="copy", acodec="copy",
 def get_video_length(filename):
     output = subprocess.check_output(("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
                                       "default=noprint_wrappers=1:nokey=1", filename)).strip()
-    video_length = int(float(output))
+    video_length = float(output)
 
     return video_length
 

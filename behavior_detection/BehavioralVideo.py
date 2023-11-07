@@ -123,8 +123,7 @@ class BehavioralVideo:
         """
         if self.frames is None:
             self.frames = self.calculate_velocities(smooth_factor=smooth_factor, save_as_csv=save_as_csv)
-        bc.create_velocity_video(video_path=self.video, tracklets_path=self.tracklets_path, fps=fps,
-                                 velocities=self.frames, dest_folder=dest_folder, smooth_factor=smooth_factor,
+        bc.create_velocity_video(video_path=self.video, tracklets_path=self.tracklets_path, velocities=self.frames, dest_folder=dest_folder, smooth_factor=smooth_factor,
                                  start_index=start_index, nframes=nframes, mask_xy=self.mask_xy,
                                  mask_dimensions=self.mask_dimensions, show_mask=show_mask, overwrite=overwrite)
 
@@ -152,6 +151,8 @@ class BehavioralVideo:
                 smaller if your velocities and position data is robust
             bower_circling_length: int
                 the minimum length a track can be before it is considered a bower circling incident
+            extract_clips: bool
+                whether to save bower circling clips
         """
         bc.track_bower_circling(self.video, self.frames, proximity, head_tail_proximity, track_age, threshold,
                                 bower_circling_length, extract_clips)

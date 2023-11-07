@@ -131,6 +131,8 @@ def shift_from_edge(x, y, width, height, debug=False) -> tuple:
 
 
 def fish_in_focus(fish, mask_xy: tuple, dimensions: tuple) -> bool:
+    if fish is None:
+        return False
     if dimensions is None:
         return True
     for cluster in fish:
@@ -241,12 +243,19 @@ def plot_velocities(frame: str, frame_num: str, fishes: typing.Dict[typing.AnySt
 
 
 def get_centroid(xy_coords: typing.List[typing.Tuple]) -> np.ndarray:
+    if len(xy_coords) == 0:
+        return None
     x_sum, y_sum = 0, 0
     for i in xy_coords:
-        if i[0] == 0 or i[0] is np.nan or i[1] == 0 or i[1] is np.nan:
+        if i[0] is np.nan or i[1] is np.nan:
             continue
         x_sum += i[0]
         y_sum += i[1]
+
+    x_out = x_sum / len(xy_coords)
+    y_out = y_sum / len(xy_coords)
+    if np.isnan(x_out) or np.isnan(y_out):
+        return None
     return np.array([x_sum / len(xy_coords), y_sum / len(xy_coords)])
 
 
@@ -266,8 +275,10 @@ def get_approximations(frame) -> typing.Dict[typing.Any, np.ndarray]:
         # middle cluster is the centroid of spine2, spine3, leftfin, and rightfin
         # tail is the backfin
         # these approximations help abstract the fish and its movement
+        if matrix.shape != (9, 3):
+            continue
         front_cluster = [(matrix[i][0], matrix[i][1]) for i in range(4)]
-        middle_cluster = [(matrix[i][0], matrix[i][1]) for i in range(3, 9) if i != 6]
+        middle_cluster = [(matrix[i][0], matrix[i][1]) for i in range(4, 9) if i != 6]
         front = get_centroid(front_cluster)
         centre = get_centroid(middle_cluster)
         tail = (matrix[6][0], matrix[6][1])
@@ -315,7 +326,7 @@ def df_to_reshaped_list(df: pd.DataFrame) -> typing.List[typing.Dict[Fish, np.nd
     rightfin
     """
     frames = list()
-    for i in range(df.shape[0]):
+    for i in tqdm(range(df.shape[0]), "Reshaping list..."):
         frame = df.iloc[i].droplevel(0).dropna()
         frame = frame.unstack(level=[0, 2])
         frame: pd.DataFrame = frame.reindex(['nose', 'lefteye', 'righteye',
@@ -324,6 +335,30 @@ def df_to_reshaped_list(df: pd.DataFrame) -> typing.List[typing.Dict[Fish, np.nd
         framedict = {fish: frame[fish].to_numpy() for fish in frame.columns.get_level_values(0).unique()}
         frames.append(framedict)
     return frames
+
+
+def _get_approximations(series: pd.Series):
+    bodies = {}
+    for i in range(0, series.shape[0], 27):
+        if series.iloc[i:i+27].isna().sum() > 18:
+            continue
+        front_cluster = [(series.iloc[i + j], series.iloc[i + j + 1]) for j in range(0, 12, 3)]
+        centre_cluster = [(series.iloc[i + j], series.iloc[i + j + 1]) for j in range(12, 27, 3) if i != 18]
+        if np.isnan(series.iloc[i + 24]) or np.isnan(series.iloc[i + 25]):
+            print("no tail found")
+            tail = None
+        else:
+            tail = (series.iloc[24], series.iloc[25])
+        bodies.update({f"fish{int(i / 27 + 1)}": [get_centroid(front_cluster), get_centroid(centre_cluster), tail]})
+    return bodies
+
+
+def velocity_debug(tracklets_path):
+    tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
+    tracklets.columns = tracklets.columns.droplevel(0)
+    frames = {}
+    for i in range(tracklets.shape[0]):
+        print(_get_approximations(tracklets.iloc[i]))
 
 
 def same_fishes_in_t_frames(frames: typing.List[typing.Dict[typing.AnyStr, np.ndarray]], t) -> bool:
@@ -347,18 +382,15 @@ def _create_velocity_video(frames: str):
         print(f"Video could not be successfully created.\nError: {e}")
 
 
-def get_velocities(tracklets_path: str, smooth_factor=1, start_index=0, nframes=None,
-                   mask_xy=(0, 0), mask_dimensions=None, save_as_csv=False) -> typing.Dict[typing.AnyStr, typing.Dict]:
+def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_dimensions=None,
+                   save_as_csv=False) -> typing.Dict[typing.AnyStr, typing.Dict]:
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
-    frames = df_to_reshaped_list(tracklets)
-    nframes = nframes if nframes is not None else tracklets.shape[0] - start_index
-    nwidth = int(math.log10(nframes)) + 1
+    nwidth = int(math.log10(tracklets.shape[0])) + 1
 
-    frames = [frames[i + start_index] for i in range(nframes)]
     allframes = {}
     t = smooth_factor + 1
 
-    for i in tqdm(range(t - 1, nframes, t - 1), desc="Getting velocities..."):
+    for i in tqdm(range(t - 1, tracklets.shape[0], t - 1), desc="Getting velocities..."):
         t_frames = frames[i - t + 1:i + 1]
         bodies = [get_approximations(frame) for frame in t_frames]
         if not same_fishes_in_t_frames(bodies, t):

@@ -136,6 +136,8 @@ def fish_in_focus(fish, mask_xy: tuple, dimensions: tuple) -> bool:
     if dimensions is None:
         return True
     for cluster in fish:
+        if cluster is None:
+            continue
         if not point_in_focus(cluster[0], cluster[1], mask_xy[0], mask_xy[1], dimensions[0], dimensions[1]):
             return False
     return True
@@ -151,6 +153,8 @@ def rotate(dx, dy, angle) -> typing.Tuple[float, float]:
 def check_direction(vel: Vel, other: typing.List[Vel], debug=False):
     avg_vel: np.ndarray = np.array((1 / len(other)) * sum(item.direction for item in other))
     avg_vel = avg_vel / np.linalg.norm(avg_vel)
+    if np.isnan(avg_vel).any():
+        return vel
     l_bound = rotate(avg_vel[0], avg_vel[1], 270)
     r_bound = rotate(avg_vel[0], avg_vel[1], 90)
     a_cross_b = l_bound[0] * vel.direction[1] - l_bound[1] * vel.direction[0]
@@ -235,6 +239,10 @@ def plot_velocities(frame: str, frame_num: str, fishes: typing.Dict[typing.AnySt
     ax.set_xticklabels([])
     ax.set_yticklabels([])
 
+    # for further optimisation, adjust the video making process to not rely on images being saved for each frame.
+    # rather, use a stream to create the video without saving to disk
+    # ref: https://stackoverflow.com/questions/73609006/how-to-create-a-video-out-of-frames-without-saving-it-to-disk-using-python
+    # ref: https://stackoverflow.com/questions/4092927/generating-movie-from-python-without-saving-individual-frames-to-files?rq=3
     plt.savefig(os.path.join(destfolder, f"{frame_num}.png"),
                 dpi=300, bbox_inches='tight', pad_inches=0)
     if show:
@@ -259,33 +267,6 @@ def get_centroid(xy_coords: typing.List[typing.Tuple]) -> np.ndarray:
     return np.array([x_sum / len(xy_coords), y_sum / len(xy_coords)])
 
 
-def get_approximations(frame) -> typing.Dict[typing.Any, np.ndarray]:
-    """
-        Approximates each fish in a frame to three clusters: front, middle, tail
-
-        Args:
-            frame: list of dicts - a frame with each detection
-        Returns:
-            a list of dicts where each key is a fish and its value is a matrix of its
-            body clusters' positions and likelihoods
-    """
-    bodies = {}
-    for fish, matrix in frame.items():
-        # front cluster is the centroid of nose, lefteye, righteye, and spine1
-        # middle cluster is the centroid of spine2, spine3, leftfin, and rightfin
-        # tail is the backfin
-        # these approximations help abstract the fish and its movement
-        if matrix.shape != (9, 3):
-            continue
-        front_cluster = [(matrix[i][0], matrix[i][1]) for i in range(4)]
-        middle_cluster = [(matrix[i][0], matrix[i][1]) for i in range(4, 9) if i != 6]
-        front = get_centroid(front_cluster)
-        centre = get_centroid(middle_cluster)
-        tail = (matrix[6][0], matrix[6][1])
-        bodies.update({fish: np.array([front, centre, tail])})
-    return bodies
-
-
 def get_single_velocities(pi: np.ndarray, pf: np.ndarray, t: int) -> typing.Tuple[Vel, Vel, Vel]:
     """
     Gets the velocity of a fish in a frame by calculating the velocity of each body mass
@@ -297,68 +278,58 @@ def get_single_velocities(pi: np.ndarray, pf: np.ndarray, t: int) -> typing.Tupl
     Returns:
         tuple (3-tuple of tuples): the velocity for each body mass in the form: (direction, magnitude)
     """
-    front_vel = np.array([pf[0][0] - pi[0][0], pf[0][1] - pi[0][1]]) / t
-    centre_vel = np.array([pf[1][0] - pi[1][0], pf[1][1] - pi[1][1]]) / t
+    try:
+        front_vel = np.array([pf[0][0] - pi[0][0], pf[0][1] - pi[0][1]]) / t
+    except TypeError:
+        front_vel = 0
+    try:
+        centre_vel = np.array([pf[1][0] - pi[1][0], pf[1][1] - pi[1][1]]) / t
+    except TypeError:
+        centre_vel = 0
     tail_vel = np.array([pf[2][0] - pi[2][0], pf[2][1] - pi[2][1]]) / t
     return (Vel(front_vel / np.linalg.norm(front_vel), np.linalg.norm(front_vel)),
             Vel(centre_vel / np.linalg.norm(centre_vel), np.linalg.norm(centre_vel)),
             Vel(tail_vel / np.linalg.norm(tail_vel), np.linalg.norm(tail_vel)))
 
 
-def df_to_reshaped_list(df: pd.DataFrame) -> typing.List[typing.Dict[Fish, np.ndarray]]:
+def none_count(a: list):
+    c = 0
+    for i in a:
+        if i is None:
+            c += 1
+    return c
+
+
+def get_approximations(series: pd.Series) -> typing.Dict[typing.AnyStr, typing.Any]:
     """
-    By default, the *_el.h5 file is stored as a DataFrame with a shape and organisation
-    similar to how the csv file looks, i.e.
+        Approximates each fish in a frame to three clusters: front, middle, tail
 
-    individual  fish1 fish1 fish1       ...
-    bodypart    nose  nose  nose        ...
-    coords      x     y     likelihood  ...
-    frame #
-    ...
-
-    This method reshapes that data into a list of dicts, where the key is the fish and
-    its value is a matrix of the following shape. The frame number is the index of the dict
-
-                x   y   likelihood
-    nose
-    lefteye
-    ...
-    rightfin
+        Args:
+            series: pd.Series
+                A row from the h5 tracklets file
+        Returns:
+            a list of dicts where each key is a fish and its value is a matrix of its
+            body clusters' positions and likelihoods
     """
-    frames = list()
-    for i in tqdm(range(df.shape[0]), "Reshaping list..."):
-        frame = df.iloc[i].droplevel(0).dropna()
-        frame = frame.unstack(level=[0, 2])
-        frame: pd.DataFrame = frame.reindex(['nose', 'lefteye', 'righteye',
-                                             'spine1', 'spine2', 'spine3',
-                                             'backfin', 'leftfin', 'rightfin'])
-        framedict = {fish: frame[fish].to_numpy() for fish in frame.columns.get_level_values(0).unique()}
-        frames.append(framedict)
-    return frames
-
-
-def _get_approximations(series: pd.Series):
     bodies = {}
     for i in range(0, series.shape[0], 27):
-        if series.iloc[i:i+27].isna().sum() > 18:
+        # front cluster is the centroid of nose, lefteye, righteye, and spine1
+        # middle cluster is the centroid of spine2, spine3, leftfin, and rightfin
+        # tail is the backfin
+        # these approximations help abstract the fish and its movement
+        if series.iloc[i:i + 27].isna().sum() > 18:
             continue
         front_cluster = [(series.iloc[i + j], series.iloc[i + j + 1]) for j in range(0, 12, 3)]
-        centre_cluster = [(series.iloc[i + j], series.iloc[i + j + 1]) for j in range(12, 27, 3) if i != 18]
-        if np.isnan(series.iloc[i + 24]) or np.isnan(series.iloc[i + 25]):
-            print("no tail found")
+        centre_cluster = [(series.iloc[i + j], series.iloc[i + j + 1]) for j in range(12, 27, 3) if j != 18]
+        if np.isnan(series.iloc[i + 18]) or np.isnan(series.iloc[i + 19]):
             tail = None
         else:
-            tail = (series.iloc[24], series.iloc[25])
-        bodies.update({f"fish{int(i / 27 + 1)}": [get_centroid(front_cluster), get_centroid(centre_cluster), tail]})
+            tail = (series.iloc[i + 18], series.iloc[i + 19])
+        out = [get_centroid(front_cluster), get_centroid(centre_cluster), tail]
+        if none_count(out) > 0:
+            continue
+        bodies.update({f"fish{int(i / 27 + 1)}": out})
     return bodies
-
-
-def velocity_debug(tracklets_path):
-    tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
-    tracklets.columns = tracklets.columns.droplevel(0)
-    frames = {}
-    for i in range(tracklets.shape[0]):
-        print(_get_approximations(tracklets.iloc[i]))
 
 
 def same_fishes_in_t_frames(frames: typing.List[typing.Dict[typing.AnyStr, np.ndarray]], t) -> bool:
@@ -385,14 +356,15 @@ def _create_velocity_video(frames: str):
 def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_dimensions=None,
                    save_as_csv=False) -> typing.Dict[typing.AnyStr, typing.Dict]:
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
+    tracklets.columns = tracklets.columns.droplevel(0)
     nwidth = int(math.log10(tracklets.shape[0])) + 1
 
     allframes = {}
     t = smooth_factor + 1
 
     for i in tqdm(range(t - 1, tracklets.shape[0], t - 1), desc="Getting velocities..."):
-        t_frames = frames[i - t + 1:i + 1]
-        bodies = [get_approximations(frame) for frame in t_frames]
+        t_frames = tracklets.iloc[[j for j in range(i - t + 1, i + 1)]]
+        bodies = [get_approximations(row) for index, row in t_frames.iterrows()]
         if not same_fishes_in_t_frames(bodies, t):
             continue
         pi, pf = bodies[0], bodies[t - 1]
@@ -407,7 +379,7 @@ def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_di
                                 for fish, vel in avg_vels.items() if
                                 fish_in_focus(body.get(fish), mask_xy, mask_dimensions)})
         for j, frame in enumerate(prev_frames):
-            frame_index = i + j + start_index - (t - 1)
+            frame_index = i + j - (t - 1)
             # adjust frame number to be 0...0n instead of n
             frame_num = f"frame{frame_index :0{nwidth}d}"
             allframes.update({frame_num: frame})
@@ -416,6 +388,7 @@ def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_di
         print("Added velocities to tracklets.")
     else:
         print("Could not add velocities to tracklets.")
+
     return allframes
 
 
@@ -449,6 +422,18 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
             os.remove(path)
 
     _create_velocity_video(vel_path)
+
+
+def euclidean_distance(a: list, b: list):
+    a_pos = list()
+    b_pos = list()
+    for i in a:
+        a_pos.append(i[0])
+        a_pos.append(i[1])
+    for i in b:
+        b_pos.append(i[0])
+        b_pos.append(i[1])
+    return math.dist(a_pos, b_pos)
 
 
 def prettify(a: typing.Dict[typing.AnyStr, Track]):
@@ -494,7 +479,7 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
                     continue
 
                 b = fishes[j]
-                distance = np.linalg.norm(a.position - b.position)
+                distance = euclidean_distance(a.position, b.position)
                 if distance > proximity:  # fish must be close
                     continue
 
@@ -533,10 +518,10 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
                 matched.add(fish_nums[closest_b])
 
     bower_circling_incidents = [track for track in tracks.values() if track.length >= bower_circling_length]
-
     if len(bower_circling_incidents) == 0:
         print("No bower circling incidents found.")
         return None
+    print(bower_circling_incidents)
 
     width = int(math.log10(len(frames))) + 1
 

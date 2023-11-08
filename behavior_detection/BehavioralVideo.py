@@ -154,6 +154,9 @@ class BehavioralVideo:
             extract_clips: bool
                 whether to save bower circling clips
         """
+        if self.frames is None:
+            raise ValueError("Make sure to run calculate_velocities() or create_velocity_video() before attempting to "
+                             "track bower circling.")
         bc.track_bower_circling(self.video, self.frames, proximity, head_tail_proximity, track_age, threshold,
                                 bower_circling_length, extract_clips)
 

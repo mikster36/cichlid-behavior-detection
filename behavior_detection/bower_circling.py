@@ -6,6 +6,7 @@
 """
 import math
 import os
+import pickle
 import sys
 import typing
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
 import cv2
+from pathlib import Path
 
 from tqdm import tqdm
 import pandas as pd
@@ -355,6 +357,13 @@ def _create_velocity_video(frames: str):
 
 def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_dimensions=None,
                    save_as_csv=False) -> typing.Dict[typing.AnyStr, typing.Dict]:
+    # check if velocities have already been calculated
+    vel_pick = os.path.join(os.path.dirname(tracklets_path), f"{Path(tracklets_path).stem}_velocities.pickle")
+    if os.path.exists(vel_pick):
+        with open(vel_pick, 'rb') as handle:
+            print(f"Velocities retrieved from {vel_pick}")
+            return pickle.load(handle)
+
     tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
     tracklets.columns = tracklets.columns.droplevel(0)
     nwidth = int(math.log10(tracklets.shape[0])) + 1
@@ -388,6 +397,9 @@ def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_di
         print("Added velocities to tracklets.")
     else:
         print("Could not add velocities to tracklets.")
+
+    with open(vel_pick, 'wb') as handle:
+        pickle.dump(allframes, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return allframes
 
@@ -461,7 +473,7 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
     for frame_num, frame in tqdm(frames.items(), desc="Tracking bower circling incidents..."):
         fish_nums = list(frame.keys())
         fishes = list(frame.values())
-        # bower circling can only happen between at least two fish
+        # bower circling can only happen when at least two fish are present
         if len(fishes) < 2:
             continue
         matched = set()
@@ -521,14 +533,16 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
     if len(bower_circling_incidents) == 0:
         print("No bower circling incidents found.")
         return None
-    print(bower_circling_incidents)
 
-    width = int(math.log10(len(frames))) + 1
+    width = int(math.log10(get_video_length(video) * get_video_fps(video))) + 1
 
-    for incident in bower_circling_incidents:
+    # this portion is only necessary if we wanted to maintain bower circling metadata for each frame
+    """
+        for incident in bower_circling_incidents:
         for i in range(str_to_int(incident.start), str_to_int(incident.end) + 1):
             frames[f"frame{i:0{width}d}"][incident.a.id].bc = True
             frames[f"frame{i:0{width}d}"][incident.b.id].bc = True
+    """
 
     print(f"Added {len(bower_circling_incidents)} bower circling track(s) to frames data.")
 

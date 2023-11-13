@@ -6,18 +6,18 @@ from behavior_detection.bower_circling import Fish, Vel
 from behavior_detection.bower_circling import track_bower_circling as track_bower_circling
 
 
-class MyTestCase(unittest.TestCase):
+class BowerCirclingTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.video = ""
-        self.proximity = 10
+        self.proximity = 12
         self.head_tail_proximity = 8
         self.threshold = 90
         self.track_age = 1
         self.bower_circling_length = 1
         self.extract_clips = False
 
-    def test_something(self):
+    def test_multiple_tracks_same_fish(self):
         """
         Scenario: fish1 and fish2 are bc for 2 frames, fish2 leaves, fish1 bc with fish3 for 3 frames some time later,
         fish3 leaves, fish1 bc with fish 2 for 1 frame some time later.
@@ -168,7 +168,8 @@ class MyTestCase(unittest.TestCase):
                                             threshold=self.threshold,
                                             track_age=self.track_age,
                                             bower_circling_length=self.bower_circling_length,
-                                            extract_clips=self.extract_clips)
+                                            extract_clips=self.extract_clips,
+                                            debug=True)
         print(bc_incidents)
 
 

@@ -1,5 +1,9 @@
 import typing
 
+from pathlib import Path
+from os import path as path
+import pickle
+
 import behavior_detection.bower_circling as bc
 import behavior_detection.misc_scripts.maskGUI as mask
 
@@ -61,7 +65,14 @@ class BehavioralVideo:
                 print("Tracklets (*_filtered.h5 file) not found.")
         else:
             self.tracklets_path = tracklets
-        self.frames = None
+
+        vel_pick = path.join(path.dirname(tracklets), f"{Path(tracklets).stem}_velocities.pickle")
+        if path.exists(vel_pick):
+            with open(vel_pick, 'rb') as handle:
+                print(f"Velocities retrieved from {vel_pick}")
+                self.frames = pickle.load(handle)
+        else:
+            self.frames = None
         if headless:
             x = int(input("X:"))
             y = int(input("Y:"))
@@ -70,7 +81,10 @@ class BehavioralVideo:
             self.mask_xy = (x, y)
             self.mask_dimensions = (w, l)
         else:
-            self.mask_xy, self.mask_dimensions = mask.get_mask(video_path)
+            if self.frames is None:
+                self.mask_xy, self.mask_dimensions = mask.get_mask(video_path)
+            else:
+                self.mask_xy, self.mask_dimensions = None, None
 
     def calculate_velocities(self,
                              smooth_factor=1,
@@ -90,6 +104,9 @@ class BehavioralVideo:
             dict[str: dict]: a dictionary where the keys are frame numbers and its values are a dictionary
             with fish numbers as keys and Fish objects as values (a Fish object has position and velocity)
         """
+        if self.frames is not None:
+            return self.frames
+
         self.frames = bc.get_velocities(tracklets_path=self.tracklets_path, smooth_factor=smooth_factor,
                                             mask_xy=self.mask_xy,
                                             mask_dimensions=self.mask_dimensions, save_as_csv=save_as_csv)

@@ -447,17 +447,17 @@ def euclidean_distance(a: list, b: list):
     return math.dist(a_pos, b_pos)
 
 
-def prettify(a: typing.Dict[typing.AnyStr, Track]):
-    for k, v in a.items():
-        print(f"{k}-{v.b.id} | Start: {v.start} | End: {v.end} | Track length: {str_to_int(v.end) - str_to_int(v.start) + 1}")
+def prettify(a: typing.List[Track]):
+    for track in a:
+        print(f"{track.a.id}-{track.b.id} | Start: {track.start} | End: {track.end} | "
+              f"Track length: {str_to_int(track.end) - str_to_int(track.start) + 1}")
 
 
-def a_directed_towards_b(a: Fish, b: Fish, threshold=60) -> bool:
+def a_directed_towards_b(a: Fish, b: Fish, theta=1.0472) -> bool:
     """
         Checks if the velocity of a's front is directed towards b's tail
         **Note that this method is not symmetric, a directed towards b does not imply that b is directed towards a
     """
-    theta = math.radians(threshold)
     u = a.vel[0].direction
     v = b.position[-1] - a.position[0]
     v = v.astype(dtype=np.dtype('float32'))
@@ -469,11 +469,12 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
                          proximity: int,
                          head_tail_proximity: int, track_age: int, threshold: int, bower_circling_length: int,
                          extract_clips: bool, debug=False):
-    tracks = {str(): list()}
+    theta = math.radians(threshold)
+    tracks = {}
     for frame_num, frame in tqdm(frames.items(), desc="Tracking bower circling incidents..."):
         fish_nums = list(frame.keys())
         fishes = list(frame.values())
-        # bower circling can only happen when at least two fish are present
+        # bower circling can only happen when at least two fish are present in the frame
         if len(fishes) < 2:
             continue
         matched = set()
@@ -495,7 +496,7 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
                 distance = euclidean_distance(a.position, b.position)
                 if distance > proximity:  # fish must be close
                     if debug:
-                        print(f"Failed basic proximity check at {fish_nums[i]}-{fish_nums[j]} in {frame_num}."
+                        print(f"Failed basic proximity check at {fish_nums[i]}-{fish_nums[j]} in {frame_num}. "
                               f"Distance: {distance}.")
                     continue
 
@@ -504,16 +505,17 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
                 # a's head must be close to b's tail and a's tail must be close to b's head
                 if ahead_btail > head_tail_proximity or atail_bhead > head_tail_proximity:
                     if debug:
-                        print(f"Failed head-tail proximity check at {fish_nums[i]}-{fish_nums[j]} in {frame_num}."
+                        print(f"Failed head-tail proximity check at {fish_nums[i]}-{fish_nums[j]} in {frame_num}. "
                               f"Ahead_btail distance: {ahead_btail}. Atail_bhead distance: {atail_bhead}.")
                     continue
 
                 # if a velocity magnitude check becomes necessary, place it here
 
                 # a's front should be directed towards b's tail, and b's front should be directed towards a's tail
-                if not (a_directed_towards_b(a, b, threshold) and a_directed_towards_b(b, a, threshold)):
+                if not (a_directed_towards_b(a, b, theta) and a_directed_towards_b(b, a, theta)):
                     if debug:
                         print(f"Failed 'a directed towards b' check at {fish_nums[i]}-{fish_nums[j]} in {frame_num}.")
+                        print(f"A velocity: {a.vel}. B velocity: {b.vel}")
                     continue
 
                 # track does not exist yet
@@ -524,32 +526,45 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
 
                     min_dist = distance
                     closest_b = j
-
-                # a track already exists, so we'll update it if it's not dead. If it's too old (track is dead), then
-                # we'll create a new track
+                    continue
                 track = tracks.get(a.id)[-1]  # most recent track
+                # most recent track is with a different b fish, so create a new track
                 if track.b.id != b.id:
-                    pass
-                if track.b.id == b.id and not track.is_dead(frame_num, track_age):
-                    tracks[a.id].end = frame_num
+                    tracks[a.id].append(Track(a=a, b=b, start=frame_num, end=frame_num))
                     matched.add(a.id)
                     matched.add(b.id)
                     break
+                # most recent track matches this b fish and is not dead, so update it
+                if not track.is_dead(frame_num, track_age):
+                    track.end = frame_num
+                    matched.add(a.id)
+                    matched.add(b.id)
+                    break
+                # most recent track matches this b fish and is dead, so create a new track
+                tracks[a.id].append(Track(a=a, b=b, start=frame_num, end=frame_num))
+                matched.add(a.id)
+                matched.add(b.id)
 
             # no match found
             if closest_b == -1:
                 continue
             # track does not exist yet
             if not tracks.get(a.id):
-                tracks.update({a.id: Track(a=a, b=fishes[closest_b], start=frame_num, end=frame_num)})
+                tracks.update({a.id: [Track(a=a, b=fishes[closest_b], start=frame_num, end=frame_num)]})
                 matched.add(a.id)
                 matched.add(fish_nums[closest_b])
 
-    bower_circling_incidents = [track for track in tracks.values()
-                                if (str_to_int(track.end) - str_to_int(track.start)) >= bower_circling_length]
+    bower_circling_incidents = list()
+    for tracks in tracks.values():
+        for track in tracks:
+            if str_to_int(track.end) - str_to_int(track.start) + 1 >= bower_circling_length:
+                bower_circling_incidents.append(track)
+
     if len(bower_circling_incidents) == 0:
         print("No bower circling incidents found.")
         return None
+
+    prettify(bower_circling_incidents)
 
     # this portion is only necessary if we wanted to maintain bower circling metadata for each frame
     """
@@ -576,12 +591,12 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
     fps = get_video_fps(video)
 
     for incident in tqdm(bower_circling_incidents, "Extracting bower circling clips..."):
-        start_f, end_f = str_to_int(incident.end), str_to_int(incident.end)
+        start_f, end_f = str_to_int(incident.start), str_to_int(incident.end)
         start = str(timedelta(seconds=(start_f / fps)))
         end = str(timedelta(seconds=(end_f / fps)))
-        length = str(timedelta(seconds=((end_f - start_f) / fps)))
+        length = str(timedelta(seconds=((end_f - start_f + 1) / fps)))
         out_file = os.path.join(output_dir, f"{start[:10]}-{end[:10]}.mp4")
         s.call(['ffmpeg', '-ss', start, '-accurate_seek', '-i', video, '-t', length, '-c:v', 'libx264',
-                '-c:a', 'aac', out_file])
+                '-c:a', 'aac', out_file, '-loglevel', 'quiet'])
 
     return bower_circling_incidents

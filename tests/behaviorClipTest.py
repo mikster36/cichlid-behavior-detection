@@ -9,7 +9,7 @@ def main():
     behavioralClip = BehavioralVideo(video_path, config=config_path, shuffle=4, tracklets=tracklets)
     behavioralClip.calculate_velocities()
     print("Running behavioralClip.check_bower_circling(threshold=90)")
-    behavioralClip.check_bower_circling(threshold=90, extract_clips=False)
+    behavioralClip.check_bower_circling(threshold=90, extract_clips=True, bower_circling_length=40)
 
 
 if __name__ == "__main__":

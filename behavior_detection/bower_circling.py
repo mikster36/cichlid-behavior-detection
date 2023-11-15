@@ -460,6 +460,8 @@ def a_directed_towards_b(a: Fish, b: Fish, theta=1.0472) -> bool:
     """
     u = a.vel[0].direction
     v = b.position[-1] - a.position[0]
+    if np.isnan(u).any() or np.isnan(v).any():
+        return False
     v = v.astype(dtype=np.dtype('float32'))
     v /= np.linalg.norm(v)
     return abs(np.arccos(np.dot(u, v))) < theta
@@ -474,13 +476,10 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
     for frame_num, frame in tqdm(frames.items(), desc="Tracking bower circling incidents..."):
         fish_nums = list(frame.keys())
         fishes = list(frame.values())
-        # bower circling can only happen when at least two fish are present in the frame
-        if len(fishes) < 2:
+        # bower circling generally only happens when 2 fish are on the screen
+        if len(fishes) < 2 or len(fishes) > 3:
             continue
         matched = set()
-        # check every combination of fish and exit when one pair is made (BC cannot happen between more than two fish)
-        # oftentimes (I think), BC occurs when there are roughly 2 fish in frame, since the male chases other females
-        # away
         for i in range(len(fishes) - 1):
             if fish_nums[i] in matched:
                 continue
@@ -494,7 +493,7 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
 
                 b = fishes[j]
                 distance = euclidean_distance(a.position, b.position)
-                if distance > proximity:  # fish must be close
+                if distance > proximity or distance < 50:  # fish must be close, but not too close
                     if debug:
                         print(f"Failed basic proximity check at {fish_nums[i]}-{fish_nums[j]} in {frame_num}. "
                               f"Distance: {distance}.")

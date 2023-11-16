@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 import typing
 from pathlib import Path
-from behavior_detection.misc_scripts.train_network import kill_and_reset
-import behavior_detection.misc_scripts.ffmpeg_split as ffmpeg_split
+from behavior_detection.misc.train_network import kill_and_reset
+import behavior_detection.misc.ffmpeg_split as ffmpeg_split
 
 import pandas as pd
 import deeplabcut as dlc
@@ -17,31 +17,30 @@ def get_subfolders(folder):
     return [os.path.join(folder, p) for p in os.listdir(folder) if os.path.isdir(os.path.join(folder, p))]
 
 
-def split_videos_by_hour(path=str(), long=True, exact=False):
+def split_video_by_hour(video: str, exact=False):
     """
-    Splits each video in path into 1 hour batches
+    Splits video into 1 hour batches
 
     Args:
-        path: str
+        video: str
             path to directory with videos
         long: bool
             set True if videos are longer than an hour
         exact: bool
             set True if you want the chunks to be exactly 1 hour long. Set to False for faster but less exact chunks
     """
-    subfolders = get_subfolders(path)
-    for subfolder in subfolders:
-        subfoldername = subfolder[subfolder.rindex('/') + 1:]
-        if not subfoldername.startswith('MC'):
-            continue
-        batches = os.path.join(subfolder, 'batches')
-        if not os.path.exists(batches):
-            os.mkdir(batches)
-        if long:
-            vcodec = 'copy' if not exact else 'h264'
-            for file in os.listdir(subfolder):
-                if file.endswith('_vid.mp4'):
-                    ffmpeg_split.split_by_seconds(os.path.join(subfolder, file), 3600, vcodec=vcodec)
+    batches = os.path.join(os.path.dirname(video), 'batches')
+    if not os.path.exists(batches):
+        os.mkdir(batches)
+
+    if len(os.listdir(batches)) > 0:
+        print("Batches already made.")
+        return batches
+
+    vcodec = 'copy' if not exact else 'h264'
+    ffmpeg_split.split_by_seconds(video, 3600, vcodec=vcodec)
+    print("Video split into batches.")
+    return batches
 
 
 def format_time(time: int):
@@ -54,7 +53,9 @@ def format_time(time: int):
     return f'{hh}:{mm}:{ss}'
 
 
-def generate_random_clips(videos=[], clip_length=10, n=10):
+def generate_random_clips(videos=None, clip_length=10, n=10):
+    if videos is None:
+        videos = []
     if videos is None:
         raise ValueError("No videos in list.")
     if type(videos) is not list:
@@ -85,10 +86,10 @@ def generate_random_clips(videos=[], clip_length=10, n=10):
             temp_dir = Path(temp_dir).parent  # move to uproot
 
 
-def analyze_video(config_path, video_path, debug=False):
+def analyze_video(config_path, video_path, debug=False, save_as_csv=False, gputouse=0):
     video_path = str(video_path)
     dlc.analyze_videos(config_path, [video_path], allow_growth=True, auto_track=False, robust_nframes=True, shuffle=4,
-                       save_as_csv=True)
+                       save_as_csv=save_as_csv, gputouse=gputouse)
     dlc.convert_detections2tracklets(config_path, [video_path], track_method='ellipse', shuffle=4)
     n_fish = 10
     while n_fish > 0:
@@ -130,15 +131,54 @@ def fix_individual_names(video_path):
 
 
 def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, plot_trajectories=False, create_labeled_video=False,
-                   debug=False):
+                   debug=False, save_as_csv=False):
+    from tensorflow.python.client import device_lib
+
+    strong_gpu = False
+    gpu_to_use = 0
+
+    gpus = [i for i in device_lib.list_local_devices() if i.device_type == 'GPU']
+    if len(gpus) == 0:
+        print("No gpus found. Using cpu...")
+    else:
+        for i, gpu in enumerate(gpus):
+            if gpu.memory_limit > 7000000000:
+                strong_gpu = True
+                gpu_to_use = i
+                break
+
     for vid in videos:
-        n_fish = analyze_video(config_path, vid, debug)
-        kill_and_reset()
-        displayedindividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
-        if plot_trajectories:
-            dlc.plot_trajectories(config_path, [vid], shuffle=shuffle,
-                                  displayedindividuals=displayedindividuals)
-        if create_labeled_video:
-            dlc.create_labeled_video(config_path, [vid], shuffle=shuffle, filtered=True,
-                                     displayedindividuals=displayedindividuals, color_by="individual")
+        if strong_gpu or ffmpeg_split.get_video_length(vid) <= 3600:
+            n_fish = analyze_video(config_path, vid, debug, save_as_csv=save_as_csv, gputouse=gpu_to_use)
+            kill_and_reset()
+            displayedindividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
+            if plot_trajectories:
+                dlc.plot_trajectories(config_path, [vid], shuffle=shuffle,
+                                      displayedindividuals=displayedindividuals)
+            if create_labeled_video:
+                dlc.create_labeled_video(config_path, [vid], shuffle=shuffle, filtered=True,
+                                         displayedindividuals=displayedindividuals, color_by="individual")
+            continue
+
+        # video is long, split it into hour long batch
+        vid_name = Path(vid).name
+        print(f"{vid_name} is long, and GPU is not strong enough to handle. Splitting video into 1 hour batches...")
+        batches = split_video_by_hour(vid)
+        for batch in os.listdir(batches):
+            video = os.path.join(batches, batch, vid_name)
+            # batch has already been analysed
+            if len(os.listdir(os.path.join(batches, batch))) >= 9:
+                print(f"{batch} has already been analysed.")
+                continue
+            n_fish = analyze_video(config_path, video, debug, save_as_csv=save_as_csv, gputouse=gpu_to_use)
+            kill_and_reset()
+            displayedindividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
+            if plot_trajectories:
+                dlc.plot_trajectories(config_path, [vid], shuffle=shuffle,
+                                      displayedindividuals=displayedindividuals)
+            if create_labeled_video:
+                dlc.create_labeled_video(config_path, [vid], shuffle=shuffle, filtered=True,
+                                         displayedindividuals=displayedindividuals, color_by="individual")
+
+
 

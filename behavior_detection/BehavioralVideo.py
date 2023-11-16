@@ -5,7 +5,9 @@ from os import path as path
 import pickle
 
 import behavior_detection.bower_circling as bc
-import behavior_detection.misc_scripts.maskGUI as mask
+import behavior_detection.misc.maskGUI as mask
+import behavior_detection.misc.tracking
+import behavior_detection.misc.video_auxiliary
 
 
 class BehavioralVideo:
@@ -54,7 +56,7 @@ class BehavioralVideo:
         self.video = video_path
         if tracklets is None:
             # Analyse video if it hasn't been analysed
-            import behavior_detection.misc_scripts.analyse_videos as analysis
+            import behavior_detection.misc.analyse_videos as analysis
             import os, glob
             analysis.analyse_videos(config, [video_path], shuffle=shuffle)
             self.tracklets_path = glob.glob(os.path.dirname(video_path) + '*filtered.h5')
@@ -107,9 +109,9 @@ class BehavioralVideo:
         if self.frames is not None:
             return self.frames
 
-        self.frames = bc.get_velocities(tracklets_path=self.tracklets_path, smooth_factor=smooth_factor,
-                                            mask_xy=self.mask_xy,
-                                            mask_dimensions=self.mask_dimensions, save_as_csv=save_as_csv)
+        self.frames = behavior_detection.misc.tracking.get_velocities(tracklets_path=self.tracklets_path, smooth_factor=smooth_factor,
+                                                                              mask_xy=self.mask_xy,
+                                                                              mask_dimensions=self.mask_dimensions, save_as_csv=save_as_csv)
         return self.frames
 
     def create_velocity_video(self,
@@ -140,9 +142,9 @@ class BehavioralVideo:
         """
         if self.frames is None:
             self.frames = self.calculate_velocities(smooth_factor=smooth_factor, save_as_csv=save_as_csv)
-        bc.create_velocity_video(video_path=self.video, tracklets_path=self.tracklets_path, velocities=self.frames, dest_folder=dest_folder, smooth_factor=smooth_factor,
-                                 start_index=start_index, nframes=nframes, mask_xy=self.mask_xy,
-                                 mask_dimensions=self.mask_dimensions, show_mask=show_mask, overwrite=overwrite)
+        behavior_detection.misc.video_auxiliary.create_velocity_video(video_path=self.video, tracklets_path=self.tracklets_path, velocities=self.frames, dest_folder=dest_folder, smooth_factor=smooth_factor,
+                                                                      start_index=start_index, nframes=nframes, mask_xy=self.mask_xy,
+                                                                      mask_dimensions=self.mask_dimensions, show_mask=show_mask, overwrite=overwrite)
 
     def check_bower_circling(self,
                              proximity=250,

@@ -115,13 +115,12 @@ def split_by_seconds(filename, split_length, vcodec="copy", acodec="copy",
         else:
             split_start = split_length * n
 
-        batch = filebase[:filebase.rindex('/') + 1] + f"batches/batch{n :0{width}:d}/"
+        batch = filebase[:filebase.rindex('/') + 1] + f"batches/batch{n :0{width}d}/"
         if not os.path.exists(batch):
             os.mkdir(batch)
         split_args += ["-ss", str(split_start), "-t", str(split_length),
-                       filebase[:filebase.rindex('/') + 1] + f"batches/batch{n + 1}/" +
-                       filebase[filebase.rindex('/') + 1:] + f"-{n + 1}" + "." + fileext]
-        print("About to run: " + " ".join(split_cmd + split_args))
+                       filebase[:filebase.rindex('/') + 1] + f"batches/batch{n}/" +
+                       filebase[filebase.rindex('/') + 1:] + "." + fileext, '-loglevel', 'quiet']
         subprocess.check_output(split_cmd + split_args)
 
 

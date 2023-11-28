@@ -191,9 +191,14 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
     _create_velocity_video(vel_path)
 
 
-def _extract_clips(bower_circling_incidents: list, video: str, batch_num=None):
+def _extract_clips(bower_circling_incidents: list, video: str):
     if video is None or len(video) == 0 or not os.path.exists(video):
         raise TypeError("Video path cannot be empty.")
+
+    batch_num = None
+    parent = Path(video).parent
+    if "batch" in parent.name:
+        batch_num = str_to_int(parent.name)
 
     output_dir = os.path.join(Path(video).parent.absolute() if batch_num
                               else os.path.dirname(video), "bower-circling-clips")

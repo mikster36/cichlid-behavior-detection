@@ -29,8 +29,10 @@ class BehavioralVideo:
         a list of every frame in the clip, with every fish's location, velocity, and behavior at each frame
     mask_xy: tuple[int, int]
         the upper left coordinates of a rectangle mask to define where fish are in bounds
-    mask_dimensions:
+    mask_dimensions: tuple[int, int]
         the width and height of the mask to define fish in bounds as a tuple (width, height)
+    batched: bool
+        if the video is longer than an hour, and the gpu is not strong enough to handle analysis, then batched is true
 
     Methods
     -------

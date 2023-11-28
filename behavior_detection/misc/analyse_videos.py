@@ -135,6 +135,7 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
                    debug=False, save_as_csv=False):
     from tensorflow.python.client import device_lib
 
+    batched = False
     strong_gpu = False
     gpu_to_use = 0
 
@@ -168,7 +169,6 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
             # be careful here in case there are other non-video files in the folder
             vid_name = Path(os.listdir(os.path.join(batches, "batch0"))[0]).name
         else:
-            # video is long, split it into hour long batches
             vid_name = Path(vid).name
             print(f"{vid_name} is long, and GPU is not strong enough to handle. Splitting video into 1 hour batches...")
             batches = split_video_by_hour(vid)
@@ -187,6 +187,5 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
             if create_labeled_video:
                 dlc.create_labeled_video(config_path, [vid], shuffle=shuffle, filtered=True,
                                          displayedindividuals=displayedindividuals, color_by="individual")
-
 
 

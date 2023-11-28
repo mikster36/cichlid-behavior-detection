@@ -6,14 +6,11 @@
 """
 import sys
 
-import subprocess as s
-from datetime import timedelta
-
 import matplotlib
 
 from behavior_detection.misc.tracking import *
 from behavior_detection.misc.tracking import str_to_int
-from behavior_detection.misc.video_auxiliary import get_video_fps
+from behavior_detection.misc.video_auxiliary import _extract_clips
 
 matplotlib.use("TKAgg")
 np.seterr(divide='ignore', invalid='ignore')
@@ -164,22 +161,8 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
     if not extract_clips:
         return bower_circling_incidents
 
-    if video is None or len(video) == 0 or not os.path.exists(video):
-        raise TypeError("Video path cannot be empty.")
-
-    output_dir = os.path.join(os.path.dirname(video), "bower-circling-clips")
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
-
-    fps = get_video_fps(video)
-
-    for incident in tqdm(bower_circling_incidents, "Extracting bower circling clips..."):
-        start_f, end_f = str_to_int(incident.start), str_to_int(incident.end)
-        start = str(timedelta(seconds=(start_f / fps)))
-        end = str(timedelta(seconds=(end_f / fps)))
-        length = str(timedelta(seconds=((end_f - start_f + 1) / fps)))
-        out_file = os.path.join(output_dir, f"{start[:10]}-{end[:10]}.mp4")
-        s.call(['ffmpeg', '-ss', start, '-accurate_seek', '-i', video, '-t', length, '-c:v', 'libx264',
-                '-c:a', 'aac', out_file, '-loglevel', 'quiet'])
+    _extract_clips(bower_circling_incidents, video)
 
     return bower_circling_incidents
+
+

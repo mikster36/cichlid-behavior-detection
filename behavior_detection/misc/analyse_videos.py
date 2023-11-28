@@ -39,7 +39,8 @@ def split_video_by_hour(video: str, exact=False):
 
     vcodec = 'copy' if not exact else 'h264'
     ffmpeg_split.split_by_seconds(video, 3600, vcodec=vcodec)
-    print("Video split into batches.")
+    print("Video split into batches. Old video deleted.")
+    os.remove(video)
     return batches
 
 
@@ -148,7 +149,7 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
                 break
 
     for vid in videos:
-        if strong_gpu or ffmpeg_split.get_video_length(vid) <= 3600:
+        if strong_gpu or (not os.path.isdir(vid) and ffmpeg_split.get_video_length(vid) <= 3600):
             n_fish = analyze_video(config_path, vid, debug, save_as_csv=save_as_csv, gputouse=gpu_to_use)
             kill_and_reset()
             displayedindividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
@@ -160,10 +161,17 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
                                          displayedindividuals=displayedindividuals, color_by="individual")
             continue
 
-        # video is long, split it into hour long batch
-        vid_name = Path(vid).name
-        print(f"{vid_name} is long, and GPU is not strong enough to handle. Splitting video into 1 hour batches...")
-        batches = split_video_by_hour(vid)
+        if os.path.isdir(vid):
+            # batches already made
+            print("Batches have already been made. Skipping splitting...")
+            batches = os.path.join(vid, "batches")
+            # be careful here in case there are other non-video files in the folder
+            vid_name = Path(os.listdir(os.path.join(batches, "batch0"))[0]).name
+        else:
+            # video is long, split it into hour long batches
+            vid_name = Path(vid).name
+            print(f"{vid_name} is long, and GPU is not strong enough to handle. Splitting video into 1 hour batches...")
+            batches = split_video_by_hour(vid)
         for batch in os.listdir(batches):
             video = os.path.join(batches, batch, vid_name)
             # batch has already been analysed

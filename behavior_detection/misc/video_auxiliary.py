@@ -2,15 +2,17 @@ import math
 import os
 import subprocess as s
 import typing
+from datetime import timedelta
 
 import cv2
 import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt, patches as patches
+from pathlib import Path
 from tqdm import tqdm
 
 from behavior_detection.misc.ffmpeg_split import get_video_length
-from behavior_detection.misc.tracking import Fish, get_velocities, point_in_focus
+from behavior_detection.misc.tracking import Fish, get_velocities, point_in_focus, str_to_int
 
 
 def video_to_frames(video: str):
@@ -166,7 +168,7 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
     if not os.path.exists(vel_path):
         os.mkdir(vel_path)
     frames = velocities if velocities is not None else get_velocities(tracklets_path, smooth_factor, start_index,
-                                                                      nframes, mask_xy, mask_dimensions, save_as_csv)
+                                                                      nframes, mask_xy)
     vel_directory = os.listdir(vel_path)
     if len([frame for frame in vel_directory if frame.endswith(".png")]) == len(frames) and not overwrite:
         print("Velocities already plotted. Exiting...")
@@ -187,3 +189,24 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
             os.remove(path)
 
     _create_velocity_video(vel_path)
+
+
+def _extract_clips(bower_circling_incidents: list, video: str, batch_num=None):
+    if video is None or len(video) == 0 or not os.path.exists(video):
+        raise TypeError("Video path cannot be empty.")
+
+    output_dir = os.path.join(Path(video).parent.absolute() if batch_num
+                              else os.path.dirname(video), "bower-circling-clips")
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    fps = get_video_fps(video)
+    for incident in tqdm(bower_circling_incidents, "Extracting bower circling clips..."):
+        start_f, end_f = str_to_int(incident.start), str_to_int(incident.end)
+        start = str(timedelta(seconds=(start_f / fps)))
+        abs_start = start if batch_num is None else str(timedelta(seconds=(start_f / fps) + 3600*batch_num))
+        end = str(timedelta(seconds=(end_f / fps)))
+        abs_end = end if batch_num is None else str(timedelta(seconds=(end_f / fps) + 3600*batch_num))
+        length = str(timedelta(seconds=((end_f - start_f + 1) / fps)))
+        out_file = os.path.join(output_dir, f"{abs_start[:10]}-{abs_end[:10]}.mp4")
+        s.call(['ffmpeg', '-ss', start, '-accurate_seek', '-i', video, '-t', length, '-c:v', 'libx264',
+                '-c:a', 'aac', out_file, '-loglevel', 'quiet'])

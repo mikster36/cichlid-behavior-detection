@@ -7,7 +7,6 @@ from PIL import ImageTk
 from PIL.Image import Image
 
 
-# via chatGPT
 class MaskSelector:
     def __init__(self, root):
         self.root = root

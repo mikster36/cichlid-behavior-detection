@@ -31,8 +31,6 @@ class BehavioralVideo:
         the upper left coordinates of a rectangle mask to define where fish are in bounds
     mask_dimensions: tuple[int, int]
         the width and height of the mask to define fish in bounds as a tuple (width, height)
-    batched: bool
-        if the video is longer than an hour, and the gpu is not strong enough to handle analysis, then batched is true
 
     Methods
     -------
@@ -54,9 +52,9 @@ class BehavioralVideo:
     * this will be prompted via a GUI
     """
 
-    def __init__(self, video_path: str, config=None, shuffle=None, tracklets=None, headless=False):
+    def __init__(self, video_path: str, config=None, shuffle=None, tracklets_path=None, headless=False):
         self.video = video_path
-        if tracklets is None:
+        if tracklets_path is None:
             # Analyse video if it hasn't been analysed
             import behavior_detection.misc.analyse_videos as analysis
             import os, glob
@@ -68,9 +66,9 @@ class BehavioralVideo:
             if self.tracklets_path is None:
                 print("Tracklets (*_filtered.h5 file) not found.")
         else:
-            self.tracklets_path = tracklets
+            self.tracklets_path = tracklets_path
 
-        vel_pick = path.join(path.dirname(tracklets), f"{Path(tracklets).stem}_velocities.pickle")
+        vel_pick = path.join(path.dirname(tracklets_path), f"{Path(tracklets_path).stem}_velocities.pickle")
         if path.exists(vel_pick):
             with open(vel_pick, 'rb') as handle:
                 print(f"Velocities retrieved from {vel_pick}")
@@ -108,16 +106,12 @@ class BehavioralVideo:
             dict[str: dict]: a dictionary where the keys are frame numbers and its values are a dictionary
             with fish numbers as keys and Fish objects as values (a Fish object has position and velocity)
         """
-        if self.frames is not None:
-            return self.frames
-
         self.frames = behavior_detection.misc.tracking.get_velocities(tracklets_path=self.tracklets_path, smooth_factor=smooth_factor,
                                                                               mask_xy=self.mask_xy,
                                                                               mask_dimensions=self.mask_dimensions, save_as_csv=save_as_csv)
         return self.frames
 
     def create_velocity_video(self,
-                              fps: int,
                               dest_folder=None,
                               smooth_factor=1,
                               start_index=0,
@@ -129,7 +123,6 @@ class BehavioralVideo:
         Overlays the velocity and coordinates of a fish's centre, middle, and tail onto a video of fish
 
         Args:
-             fps: frame rate for the video (this should be the same as the frame rate of the input video)
              dest_folder: where the velocity video should be stored
              smooth_factor: the distance of frames used to calculate velocity. By default, this is 1, which provides no
              smoothing. A general, decent smooth factor for a 30fps video is between 6-8. Increase this number if your
@@ -142,8 +135,7 @@ class BehavioralVideo:
              directory as the tracklets file, following the naming convention of the tracklets file
              overwrite: whether to overwrite the existing velocity video (if there is one)
         """
-        if self.frames is None:
-            self.frames = self.calculate_velocities(smooth_factor=smooth_factor, save_as_csv=save_as_csv)
+        self.frames = self.calculate_velocities(smooth_factor=smooth_factor, save_as_csv=save_as_csv)
         behavior_detection.misc.video_auxiliary.create_velocity_video(video_path=self.video, tracklets_path=self.tracklets_path, velocities=self.frames, dest_folder=dest_folder, smooth_factor=smooth_factor,
                                                                       start_index=start_index, nframes=nframes, mask_xy=self.mask_xy,
                                                                       mask_dimensions=self.mask_dimensions, show_mask=show_mask, overwrite=overwrite)
@@ -181,3 +173,12 @@ class BehavioralVideo:
         bc.track_bower_circling(self.video, self.frames, proximity, head_tail_proximity, track_age, threshold,
                                 bower_circling_length, extract_clips)
 
+    def set(self, **kwargs):
+        """
+        Sets any field. Use with caution to avoid unexpected behaviour
+        """
+        self.video = kwargs.get('video_path', self.video)
+        self.tracklets_path = kwargs.get('tracklets_path', self.tracklets_path)
+        self.frames = kwargs.get('frames', self.frames)
+        self.mask_xy = kwargs.get('mask_xy', self.mask_xy)
+        self.mask_dimensions = kwargs.get('mask_dimensions', self.mask_dimensions)

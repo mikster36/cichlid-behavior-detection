@@ -197,20 +197,22 @@ def _extract_clips(bower_circling_incidents: list, video: str):
 
     batch_num = None
     parent = Path(video).parent
+
     if "batch" in parent.name:
         batch_num = str_to_int(parent.name)
 
-    output_dir = os.path.join(Path(video).parent.absolute() if batch_num
+    output_dir = os.path.join(parent.parent.parent.absolute() if not batch_num is None
                               else os.path.dirname(video), "bower-circling-clips")
+    print(batch_num is None, parent.name, parent.parent.parent.absolute())
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     fps = get_video_fps(video)
     for incident in tqdm(bower_circling_incidents, "Extracting bower circling clips..."):
         start_f, end_f = str_to_int(incident.start), str_to_int(incident.end)
         start = str(timedelta(seconds=(start_f / fps)))
-        abs_start = start if batch_num is None else str(timedelta(seconds=(start_f / fps) + 3600*batch_num))
+        abs_start = start if batch_num is None else str(timedelta(seconds=(start_f / fps) + 3600 * batch_num))
         end = str(timedelta(seconds=(end_f / fps)))
-        abs_end = end if batch_num is None else str(timedelta(seconds=(end_f / fps) + 3600*batch_num))
+        abs_end = end if batch_num is None else str(timedelta(seconds=(end_f / fps) + 3600 * batch_num))
         length = str(timedelta(seconds=((end_f - start_f + 1) / fps)))
         out_file = os.path.join(output_dir, f"{abs_start[:10]}-{abs_end[:10]}.mp4")
         s.call(['ffmpeg', '-ss', start, '-accurate_seek', '-i', video, '-t', length, '-c:v', 'libx264',

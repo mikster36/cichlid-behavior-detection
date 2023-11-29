@@ -131,8 +131,8 @@ def fix_individual_names(video_path):
     df.to_hdf(h5_path, "df_with_missing", format="table", mode="w")
 
 
-def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, plot_trajectories=False, create_labeled_video=False,
-                   debug=False, save_as_csv=False):
+def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, plot_trajectories=False,
+                   create_labeled_video=False, debug=False, save_as_csv=False):
     from tensorflow.python.client import device_lib
 
     batched = False
@@ -172,20 +172,8 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
             vid_name = Path(vid).name
             print(f"{vid_name} is long, and GPU is not strong enough to handle. Splitting video into 1 hour batches...")
             batches = split_video_by_hour(vid)
-        for batch in os.listdir(batches):
-            video = os.path.join(batches, batch, vid_name)
-            # batch has already been analysed
-            if len(os.listdir(os.path.join(batches, batch))) >= 9:
-                print(f"{batch} has already been analysed.")
-                continue
-            n_fish = analyze_video(config_path, video, debug, save_as_csv=save_as_csv, gputouse=gpu_to_use)
-            kill_and_reset()
-            displayedindividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
-            if plot_trajectories:
-                dlc.plot_trajectories(config_path, [vid], shuffle=shuffle,
-                                      displayedindividuals=displayedindividuals)
-            if create_labeled_video:
-                dlc.create_labeled_video(config_path, [vid], shuffle=shuffle, filtered=True,
-                                         displayedindividuals=displayedindividuals, color_by="individual")
+            vids = [os.path.join(batches, batch, vid_name) for batch in os.listdir(batches)]
+            analyse_videos(config_path, vids, shuffle, plot_trajectories, create_labeled_video,
+                           debug, save_as_csv)
 
 

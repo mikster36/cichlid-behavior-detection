@@ -203,7 +203,6 @@ def _extract_clips(bower_circling_incidents: list, video: str):
 
     output_dir = os.path.join(parent.parent.parent.absolute() if not batch_num is None
                               else os.path.dirname(video), "bower-circling-clips")
-    print(batch_num is None, parent.name, parent.parent.parent.absolute())
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     fps = get_video_fps(video)

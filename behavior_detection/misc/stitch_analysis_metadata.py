@@ -69,7 +69,7 @@ def swap_columns(df: pd.DataFrame, cols_to_swap: dict):
     return df
 
 
-def stitch_tracklets(batches_folder: str):
+def stitch_batches(batches_folder: str):
     out = pd.DataFrame()
     batches = sorted(os.listdir(batches_folder))
     prev_dir = os.path.join(batches_folder, batches[0])
@@ -93,8 +93,3 @@ def stitch_tracklets(batches_folder: str):
             print(e)
 
     out.to_csv(os.path.join(Path(batches_folder).parent.absolute(), Path(csv_filepath).name), index=False)
-
-
-if __name__ == "__main__":
-    batches = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc24_4_Tk47_030320/batches"
-    stitch_tracklets(batches)

@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import typing
 from pathlib import Path
+
+from behavior_detection.misc import stitch_analysis_metadata
 from behavior_detection.misc.train_network import kill_and_reset
 import behavior_detection.misc.ffmpeg_split as ffmpeg_split
 
@@ -135,7 +137,6 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
                    debug=False, save_as_csv=False):
     from tensorflow.python.client import device_lib
 
-    batched = False
     strong_gpu = False
     gpu_to_use = 0
 
@@ -172,6 +173,7 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
             vid_name = Path(vid).name
             print(f"{vid_name} is long, and GPU is not strong enough to handle. Splitting video into 1 hour batches...")
             batches = split_video_by_hour(vid)
+
         for batch in os.listdir(batches):
             video = os.path.join(batches, batch, vid_name)
             # batch has already been analysed
@@ -187,5 +189,7 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
             if create_labeled_video:
                 dlc.create_labeled_video(config_path, [vid], shuffle=shuffle, filtered=True,
                                          displayedindividuals=displayedindividuals, color_by="individual")
+
+        stitch_analysis_metadata.stitch_batches(batches)
 
 

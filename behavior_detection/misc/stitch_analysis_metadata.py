@@ -3,8 +3,16 @@ import glob
 
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
-from behavior_detection.misc.tracking import str_to_int
+col_1 = ['individuals'] + [f'fish{i}' for i in range(1, 11) for _ in range(27)]
+col_2 = ['bodyparts'] + ['nose', 'nose', 'nose', 'lefteye', 'lefteye', 'lefteye',
+                         'righteye', 'righteye', 'righteye', 'spine1', 'spine1', 'spine1',
+                         'spine2', 'spine2', 'spine2', 'spine3', 'spine3', 'spine3',
+                         'backfin', 'backfin', 'backfin', 'leftfin', 'leftfin', 'leftfin',
+                         'rightfin', 'rightfin', 'rightfin'] * 10
+col_3 = ['coords'] + ['x', 'y', 'likelihood'] * 9 * 10
+index = pd.MultiIndex.from_arrays([col_1, col_2, col_3])
 
 
 def get_difference(a: pd.Series, b: pd.Series):
@@ -51,52 +59,42 @@ def fix_order(cols: list):
 
 
 def swap_columns(df: pd.DataFrame, cols_to_swap: dict):
-    # fix
     if cols_to_swap is None or len(cols_to_swap) == 0:
         return df
     cols = fix_order(df.columns.levels[0].tolist())
     for i in range(len(cols)):
         if cols_to_swap.get(cols[i]):
-            j = str_to_int(cols_to_swap.get(cols[i]))
-            temp = cols[i]
-            cols[i] = cols[j]
-            cols[j] = temp
+            df[cols[i]], df[cols_to_swap[cols[i]]] = df[cols_to_swap[cols[i]]], df[cols[i]]
 
-    new_df = df.reindex(columns=pd.MultiIndex.from_product([cols, df.columns.levels[1], df.columns.levels[2]]))
-    return new_df
+    return df
 
 
 def stitch_tracklets(batches_folder: str):
+    out = pd.DataFrame()
     batches = sorted(os.listdir(batches_folder))
     prev_dir = os.path.join(batches_folder, batches[0])
-    prev_csv = pd.read_csv(glob.glob(os.path.join(prev_dir, "*filtered.csv"))[0], header=[0, 1, 2, 3])
+    csv_filepath = glob.glob(os.path.join(prev_dir, "*filtered.csv"))[0]
+    prev_csv = pd.read_csv(csv_filepath, header=[0, 1, 2, 3])
     prev_csv.columns = prev_csv.columns.droplevel(0)
+    prev_csv.reindex(columns=index, fill_value=np.nan)
 
     for i in range(1, len(batches)):
         curr_dir = os.path.join(batches_folder, batches[i])
         try:
             curr_csv = pd.read_csv(glob.glob(os.path.join(curr_dir, "*filtered.csv"))[0], header=[0, 1, 2, 3])
             curr_csv.columns = curr_csv.columns.droplevel(0)
+            curr_csv.reindex(columns=index, fill_value=np.nan)
             table = get_pairs(prev_csv.iloc[-1], curr_csv.iloc[0])
             print(f"prev: batch{i - 1}, curr: batch{i}. links: {table}")
             prev_csv = swap_columns(prev_csv, table)
-            print(prev_csv)
+            out = pd.concat((out, prev_csv), ignore_index=True)
             prev_csv = curr_csv
         except FileNotFoundError as e:
             print(e)
 
+    out.to_csv(os.path.join(Path(batches_folder).parent.absolute(), Path(csv_filepath).name), index=False)
+
 
 if __name__ == "__main__":
-    batches = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc36_2_Tk3_030320/batches"
+    batches = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc24_4_Tk47_030320/batches"
     stitch_tracklets(batches)
-
-    """
-     # Specify the rows and columns to swap
-    rows_to_swap = [0, 1]
-    cols_to_swap_first_set = ['col4', 'col2']
-    cols_to_swap_second_set = ['col3', 'col5']
-
-    # Swap the values
-    df.loc[rows_to_swap, cols_to_swap_first_set], df.loc[rows_to_swap, cols_to_swap_second_set] = \
-        df.loc[rows_to_swap, cols_to_swap_second_set].values, df.loc[rows_to_swap, cols_to_swap_first_set].values
-    """

@@ -133,8 +133,8 @@ def fix_individual_names(video_path):
     df.to_hdf(h5_path, "df_with_missing", format="table", mode="w")
 
 
-def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, plot_trajectories=False, create_labeled_video=False,
-                   debug=False, save_as_csv=False):
+def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, plot_trajectories=False,
+                   create_labeled_video=False, debug=False, save_as_csv=False):
     from tensorflow.python.client import device_lib
 
     strong_gpu = False

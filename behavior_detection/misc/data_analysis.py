@@ -122,5 +122,5 @@ def get_avg_across_trials():
 
     print(sum / count)
 
-
-get_avg_across_trials()
+if __name__ == "__main__":
+    get_avg_across_trials()

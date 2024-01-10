@@ -15,7 +15,10 @@ our dataset (collected in 2020) consists of ~10 hour top-down videos of 38 tanks
 
 ## references
 Johnson, Z.V., Arrojwala, M.T.S., Aljapur, V. et al. Automated measurement of long-term bower behaviors in Lake Malawi cichlids using depth sensing and action recognition. Sci Rep 10, 20573 (2020).<br /> https://doi.org/10.1038/s41598-020-77549-2.<br /><br />
+Johnson, Z.V., Hegarty, B.E., Gruenhagen, G.W. et al. Cellular profiling of a recently-evolved social behavior in cichlid fishes. Nat Commun 14, 4891 (2023).
+<br />https://doi.org/10.1038/s41467-023-40331-9<br /><br />
 Lijiang Long, Zachary V. Johnson, Junyu Li, Tucker J. Lancaster, Vineeth Aljapur, Jeffrey T. Streelman, Patrick T. McGrath. Automatic Classification of Cichlid Behaviors Using 3D Convolutional Residual Networks. iScience Volume 23, Issue 10, 2020.<br />https://doi.org/10.1016/j.isci.2020.101591.<br /><br />
 Mathis, A., Mamidanna, P., Cury, K.M. et al. DeepLabCut: markerless pose estimation of user-defined body parts with deep learning. Nat Neurosci 21, 1281–1289 (2018).
 <br />https://doi.org/10.1038/s41593-018-0209-y.<br /><br />
 York, Ryan & Patil, Chinar & Hulsey, C. & Streelman, J. & Fernald, Russell. (2015). Evolution of bower building in Lake Malawi cichlid fish: Phylogeny, morphology, and behavior. Frontiers in Ecology and Evolution. 3.<br />https://doi.org/10.3389/fevo.2015.00018.<br />
+

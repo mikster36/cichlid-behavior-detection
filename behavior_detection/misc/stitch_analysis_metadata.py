@@ -12,7 +12,7 @@ col_2 = ['bodyparts'] + ['nose', 'nose', 'nose', 'lefteye', 'lefteye', 'lefteye'
                          'backfin', 'backfin', 'backfin', 'leftfin', 'leftfin', 'leftfin',
                          'rightfin', 'rightfin', 'rightfin'] * 10
 col_3 = ['coords'] + ['x', 'y', 'likelihood'] * 9 * 10
-index = pd.MultiIndex.from_arrays([col_1, col_2, col_3])
+INDEX = pd.MultiIndex.from_arrays([col_1, col_2, col_3])
 
 
 def get_difference(a: pd.Series, b: pd.Series):
@@ -69,27 +69,33 @@ def swap_columns(df: pd.DataFrame, cols_to_swap: dict):
     return df
 
 
-def stitch_batches(batches_folder: str):
+def stitch_batches(batches_folder: str, debug=False):
     out = pd.DataFrame()
     batches = sorted(os.listdir(batches_folder))
     prev_dir = os.path.join(batches_folder, batches[0])
     csv_filepath = glob.glob(os.path.join(prev_dir, "*filtered.csv"))[0]
     prev_csv = pd.read_csv(csv_filepath, header=[0, 1, 2, 3])
     prev_csv.columns = prev_csv.columns.droplevel(0)
-    prev_csv.reindex(columns=index, fill_value=np.nan)
+    prev_csv.reindex(columns=INDEX, fill_value=np.nan)
 
     for i in range(1, len(batches)):
         curr_dir = os.path.join(batches_folder, batches[i])
         try:
             curr_csv = pd.read_csv(glob.glob(os.path.join(curr_dir, "*filtered.csv"))[0], header=[0, 1, 2, 3])
             curr_csv.columns = curr_csv.columns.droplevel(0)
-            curr_csv.reindex(columns=index, fill_value=np.nan)
+            curr_csv.reindex(columns=INDEX, fill_value=np.nan)
+            curr_csv["individuals"] = curr_csv["individuals"] + prev_csv["individuals"].iloc[-1] + 1
             table = get_pairs(prev_csv.iloc[-1], curr_csv.iloc[0])
-            print(f"prev: batch{i - 1}, curr: batch{i}. links: {table}")
+            if debug:
+                print(f"prev: batch{i - 1}, curr: batch{i}. links: {table}")
             prev_csv = swap_columns(prev_csv, table)
             out = pd.concat((out, prev_csv), ignore_index=True)
             prev_csv = curr_csv
-        except FileNotFoundError as e:
+        except (FileNotFoundError, IndexError) as e:
             print(e)
+            return
 
     out.to_csv(os.path.join(Path(batches_folder).parent.absolute(), Path(csv_filepath).name), index=False)
+
+if __name__=="__main__":
+    stitch_batches("/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc28_1_Tk3_022520/batches")

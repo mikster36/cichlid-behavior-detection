@@ -54,9 +54,9 @@ class BehavioralVideo:
     * this will be prompted via a GUI
     """
 
-    def __init__(self, video_path: str, config=None, shuffle=None, tracklets=None, headless=False):
+    def __init__(self, video_path: str, config=None, shuffle=None, tracklets_path=None, headless=False):
         self.video = video_path
-        if tracklets is None:
+        if tracklets_path is None:
             # Analyse video if it hasn't been analysed
             import behavior_detection.misc.analyse_videos as analysis
             import os, glob
@@ -68,16 +68,16 @@ class BehavioralVideo:
             if self.tracklets_path is None:
                 print("Tracklets (*_filtered.h5 file) not found.")
         else:
-            self.tracklets_path = tracklets
+            self.tracklets_path = tracklets_path
 
-        vel_pick = path.join(path.dirname(tracklets), f"{Path(tracklets).stem}_velocities.pickle")
+        vel_pick = path.join(path.dirname(tracklets_path), f"{Path(tracklets_path).stem}_velocities.pickle")
         if path.exists(vel_pick):
             with open(vel_pick, 'rb') as handle:
                 print(f"Velocities retrieved from {vel_pick}")
                 self.frames = pickle.load(handle)
         else:
             self.frames = None
-        if headless:
+        if headless and self.frames is None:
             x = int(input("X:"))
             y = int(input("Y:"))
             w = int(input("Width:"))
@@ -181,3 +181,6 @@ class BehavioralVideo:
         bc.track_bower_circling(self.video, self.frames, proximity, head_tail_proximity, track_age, threshold,
                                 bower_circling_length, extract_clips)
 
+    def set(self, **kwargs):
+        self.video = kwargs['video_path']
+        self.tracklets_path = kwargs['tracklets_path']

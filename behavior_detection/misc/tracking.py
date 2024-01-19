@@ -23,6 +23,14 @@ class Fish:
     vel: typing.List[Vel]
     bc: bool
 
+    def avg_vel(self):
+        magnitude = 0
+        direction = np.ndarray(2,)
+        for v in self.vel:
+            magnitude += v.magnitude / len(self.vel)
+            direction += v.direction / len(self.vel) if not np.isnan(v.direction[0]) else 0
+        return Vel(direction=direction, magnitude=magnitude)
+
 
 @dataclass
 class Track:
@@ -238,3 +246,35 @@ def rotate(dx, dy, angle) -> typing.Tuple[float, float]:
     ndx = dx * math.cos(rad) + dy * math.sin(rad)
     ndy = -dx * math.sin(rad) + dy * math.cos(rad)
     return ndx, ndy
+
+
+def euclidean_distance(a: list, b: list):
+    a_pos = list()
+    b_pos = list()
+    for i in a:
+        a_pos.append(i[0])
+        a_pos.append(i[1])
+    for i in b:
+        b_pos.append(i[0])
+        b_pos.append(i[1])
+    return math.dist(a_pos, b_pos)
+
+
+def prettify(a: typing.List[Track]):
+    for track in a:
+        print(f"{track.a.id}-{track.b.id} | Start: {track.start} | End: {track.end} | "
+              f"Track length: {str_to_int(track.end) - str_to_int(track.start) + 1}")
+
+
+def a_directed_towards_b(a: Fish, b: Fish, theta=1.0472) -> bool:
+    """
+        Checks if the velocity of a's front is directed towards b's tail
+        **Note that this method is not symmetric, a directed towards b does not imply that b is directed towards a
+    """
+    u = a.vel[0].direction
+    v = b.position[-1] - a.position[0]
+    if np.isnan(u).any() or np.isnan(v).any():
+        return False
+    v = v.astype(dtype=np.dtype('float32'))
+    v /= np.linalg.norm(v)
+    return abs(np.arccos(np.dot(u, v))) < theta

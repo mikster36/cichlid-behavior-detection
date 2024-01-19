@@ -9,43 +9,11 @@ import sys
 import matplotlib
 
 from behavior_detection.misc.tracking import *
-from behavior_detection.misc.tracking import str_to_int
-from behavior_detection.misc.video_auxiliary import _extract_clips
+from behavior_detection.misc.tracking import str_to_int, euclidean_distance, prettify, a_directed_towards_b
+from behavior_detection.misc.video_auxiliary import extract_incidents
 
 matplotlib.use("TKAgg")
 np.seterr(divide='ignore', invalid='ignore')
-
-
-def euclidean_distance(a: list, b: list):
-    a_pos = list()
-    b_pos = list()
-    for i in a:
-        a_pos.append(i[0])
-        a_pos.append(i[1])
-    for i in b:
-        b_pos.append(i[0])
-        b_pos.append(i[1])
-    return math.dist(a_pos, b_pos)
-
-
-def prettify(a: typing.List[Track]):
-    for track in a:
-        print(f"{track.a.id}-{track.b.id} | Start: {track.start} | End: {track.end} | "
-              f"Track length: {str_to_int(track.end) - str_to_int(track.start) + 1}")
-
-
-def a_directed_towards_b(a: Fish, b: Fish, theta=1.0472) -> bool:
-    """
-        Checks if the velocity of a's front is directed towards b's tail
-        **Note that this method is not symmetric, a directed towards b does not imply that b is directed towards a
-    """
-    u = a.vel[0].direction
-    v = b.position[-1] - a.position[0]
-    if np.isnan(u).any() or np.isnan(v).any():
-        return False
-    v = v.astype(dtype=np.dtype('float32'))
-    v /= np.linalg.norm(v)
-    return abs(np.arccos(np.dot(u, v))) < theta
 
 
 def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]],
@@ -158,10 +126,8 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
 
     print(f"Added {len(bower_circling_incidents)} bower circling track(s) to frames data.")
 
-    if not extract_clips:
-        return bower_circling_incidents
-
-    _extract_clips(bower_circling_incidents, video)
+    if extract_clips:
+        extract_incidents(bower_circling_incidents, video, behavior="bower-circling")
 
     return bower_circling_incidents
 

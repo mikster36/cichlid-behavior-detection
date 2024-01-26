@@ -69,8 +69,12 @@ def get_velocities(tracklets_path: str, smooth_factor=1, mask_xy=(0, 0), mask_di
             print(f"Velocities retrieved from {vel_pick}")
             return pickle.load(handle)
 
-    tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
-    tracklets.columns = tracklets.columns.droplevel(0)
+    if tracklets_path.endswith('h5'):
+        tracklets: pd.DataFrame = pd.DataFrame(pd.read_hdf(tracklets_path))
+        tracklets.columns = tracklets.columns.droplevel(0)
+    else:
+        tracklets: pd.DataFrame = pd.DataFrame(pd.read_csv(tracklets_path, header=[0, 1, 2], index_col=0))
+
     nwidth = int(math.log10(tracklets.shape[0])) + 1
 
     allframes = {}

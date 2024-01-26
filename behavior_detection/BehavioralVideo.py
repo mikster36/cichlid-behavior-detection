@@ -75,7 +75,7 @@ class BehavioralVideo:
                 self.frames = pickle.load(handle)
         else:
             self.frames = None
-        if headless:
+        if headless and self.frames is None:
             x = int(input("X:"))
             y = int(input("Y:"))
             w = int(input("Width:"))
@@ -177,8 +177,5 @@ class BehavioralVideo:
         """
         Sets any field. Use with caution to avoid unexpected behaviour
         """
-        self.video = kwargs.get('video_path', self.video)
-        self.tracklets_path = kwargs.get('tracklets_path', self.tracklets_path)
-        self.frames = kwargs.get('frames', self.frames)
-        self.mask_xy = kwargs.get('mask_xy', self.mask_xy)
-        self.mask_dimensions = kwargs.get('mask_dimensions', self.mask_dimensions)
+        self.video = kwargs['video_path']
+        self.tracklets_path = kwargs['tracklets_path']

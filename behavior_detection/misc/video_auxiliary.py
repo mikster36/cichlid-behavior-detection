@@ -191,7 +191,8 @@ def create_velocity_video(video_path: str, tracklets_path: str, velocities=None,
     _create_velocity_video(vel_path)
 
 
-def _extract_clips(bower_circling_incidents: list, video: str):
+# generalise this to work with any kind of behavior, not just bower circling
+def extract_incidents(bower_circling_incidents: list, video: str, behavior: str):
     if video is None or len(video) == 0 or not os.path.exists(video):
         raise TypeError("Video path cannot be empty.")
 
@@ -201,12 +202,12 @@ def _extract_clips(bower_circling_incidents: list, video: str):
     if "batch" in parent.name:
         batch_num = str_to_int(parent.name)
 
-    output_dir = os.path.join(parent.parent.parent.absolute() if not batch_num is None
-                              else os.path.dirname(video), "bower-circling-clips")
+    output_dir = os.path.join(Path(video).parent.absolute() if batch_num
+                              else os.path.dirname(video), f"{behavior}-clips")
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     fps = get_video_fps(video)
-    for incident in tqdm(bower_circling_incidents, "Extracting bower circling clips..."):
+    for incident in tqdm(bower_circling_incidents, f"Extracting {behavior} clips..."):
         start_f, end_f = str_to_int(incident.start), str_to_int(incident.end)
         start = str(timedelta(seconds=(start_f / fps)))
         abs_start = start if batch_num is None else str(timedelta(seconds=(start_f / fps) + 3600 * batch_num))

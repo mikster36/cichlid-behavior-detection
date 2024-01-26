@@ -198,6 +198,7 @@ def extract_incidents(bower_circling_incidents: list, video: str, behavior: str)
 
     batch_num = None
     parent = Path(video).parent
+
     if "batch" in parent.name:
         batch_num = str_to_int(parent.name)
 
@@ -209,9 +210,9 @@ def extract_incidents(bower_circling_incidents: list, video: str, behavior: str)
     for incident in tqdm(bower_circling_incidents, f"Extracting {behavior} clips..."):
         start_f, end_f = str_to_int(incident.start), str_to_int(incident.end)
         start = str(timedelta(seconds=(start_f / fps)))
-        abs_start = start if batch_num is None else str(timedelta(seconds=(start_f / fps) + 3600*batch_num))
+        abs_start = start if batch_num is None else str(timedelta(seconds=(start_f / fps) + 3600 * batch_num))
         end = str(timedelta(seconds=(end_f / fps)))
-        abs_end = end if batch_num is None else str(timedelta(seconds=(end_f / fps) + 3600*batch_num))
+        abs_end = end if batch_num is None else str(timedelta(seconds=(end_f / fps) + 3600 * batch_num))
         length = str(timedelta(seconds=((end_f - start_f + 1) / fps)))
         out_file = os.path.join(output_dir, f"{abs_start[:10]}-{abs_end[:10]}.mp4")
         s.call(['ffmpeg', '-ss', start, '-accurate_seek', '-i', video, '-t', length, '-c:v', 'libx264',

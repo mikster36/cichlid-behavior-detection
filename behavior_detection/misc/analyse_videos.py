@@ -19,7 +19,7 @@ def get_subfolders(folder):
     return [os.path.join(folder, p) for p in os.listdir(folder) if os.path.isdir(os.path.join(folder, p))]
 
 
-def split_video_by_hour(video: str, exact=False):
+def split_video_by_hour(video: str, exact=False, delete=False):
     """
     Splits video into 1 hour batches
 
@@ -41,8 +41,10 @@ def split_video_by_hour(video: str, exact=False):
 
     vcodec = 'copy' if not exact else 'h264'
     ffmpeg_split.split_by_seconds(video, 3600, vcodec=vcodec)
-    print("Video split into batches. Old video deleted.")
-    os.remove(video)
+    print("Video split into batches.")
+    if delete:
+        print("Deleting old video.")
+        os.remove(video)
     return batches
 
 
@@ -182,6 +184,7 @@ def analyse_videos(config_path, videos: typing.List[typing.AnyStr], shuffle=1, p
                 continue
             n_fish = analyze_video(config_path, video, debug, save_as_csv=save_as_csv, gputouse=gpu_to_use)
             kill_and_reset()
+            os.remove(video)
             displayedindividuals = [f'fish{i}' for i in range(1, n_fish + 1)]
             if plot_trajectories:
                 dlc.plot_trajectories(config_path, [vid], shuffle=shuffle,

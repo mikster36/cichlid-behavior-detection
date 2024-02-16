@@ -26,8 +26,6 @@ def upload_to_dropbox(local_folder, remote_folder):
 
 
 def find_trial_vid(items):
-    import regex as re
-
     for item in items:
         if item.endswith(".mp4"):
             return item
@@ -42,7 +40,6 @@ def find_tracklets_file(items):
 
 
 def get_recent_video(dropbox_folder):
-    import subprocess
     import json
     # Run the rclone command to list files in the Dropbox folder in JSON format
     command = ['rclone', 'lsjson', 'dropbox:' + dropbox_folder]
@@ -87,4 +84,38 @@ def get_clips(trial, config):
     vid = BehavioralVideo(video_path=vid, config=config, shuffle=4, tracklets_path=tracklets)
     vid.calculate_velocities()
     vid.check_bower_circling(threshold=120, extract_clips=True, bower_circling_length=32)
+
+
+def get_clips_from_clustering_data(trial, behavior, p_cutoff=0.7):
+    # behavior in {'x', 'f', 'd', 'm', 's', 'o', 't', 'c'}
+    # only care about 's' - spawning at the moment
+    import pandas as pd
+    from datetime import timedelta
+    from behavior_detection.misc.ffmpeg_split import get_video_length
+    from behavior_detection.misc.video_auxiliary import get_video_fps
+
+    # download clustering data from dropbox if it doesn't exist
+    clustering = os.path.join(trial, "clustering")
+    if not os.path.isdir(clustering):
+        os.mkdir(clustering)
+    clusters_csv = os.path.join(clustering, "AllLabeledClusters.csv")
+    if not os.path.exists(clusters_csv):
+        trial_id = os.path.basename(trial)
+        path = "BioSci-McGrath/Apps/CichlidPidata/__ProjectData/Single_nuc_1/"
+        path = os.path.join(path, trial_id, "MasterAnalysisFiles/AllLabeledClusters.csv")
+        subprocess.run(['rclone', 'copy', 'dropbox:' + path, clustering])
+    vid = find_trial_vid(os.listdir(trial))
+    frame_rate = get_video_fps(os.path.join(trial, vid))
+    t_delta = 2.5
+    length = 5  # 5 second clips
+
+
+    # read clustering data
+    clusters = pd.read_csv(clusters_csv)
+    clusters = clusters[(clusters['Prediction'] == behavior) &
+                   (clusters['VideoID'] == vid.replace(".mp4", "")) &
+                        (clusters['ClipCreated'] == "Yes")]
+    clusters['start'] = clusters['t'].apply(lambda x: str(timedelta(seconds=x - t_delta)))
+
+    print(clusters)
 

@@ -146,7 +146,8 @@ class BehavioralVideo:
                              threshold=60,
                              track_age=18,
                              bower_circling_length=30,
-                             extract_clips=True):
+                             extract_clips=True,
+                             buffer = 0):
         """
         Checks to see if bower circling occurs in this clip
 
@@ -171,11 +172,16 @@ class BehavioralVideo:
             raise ValueError("Make sure to run calculate_velocities() or create_velocity_video() before attempting to "
                              "track bower circling.")
         bc.track_bower_circling(self.video, self.frames, proximity, head_tail_proximity, track_age, threshold,
-                                bower_circling_length, extract_clips)
+                                bower_circling_length, extract_clips, buffer)
 
     def set(self, **kwargs):
         """
         Sets any field. Use with caution to avoid unexpected behaviour
         """
-        self.video = kwargs['video_path']
-        self.tracklets_path = kwargs['tracklets_path']
+        for key in kwargs:
+            if key == 'video_path':
+                self.video = kwargs['video_path']
+            elif key == 'tracklets_path':
+                self.tracklets_path = kwargs['tracklets_path']
+            elif key == 'velocities':
+                self.frames = kwargs['velocities']

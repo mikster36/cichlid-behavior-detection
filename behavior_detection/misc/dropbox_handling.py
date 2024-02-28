@@ -1,5 +1,6 @@
 import os
 import subprocess
+from tqdm import tqdm
 
 from behavior_detection.BehavioralVideo import BehavioralVideo
 
@@ -26,8 +27,6 @@ def upload_to_dropbox(local_folder, remote_folder):
 
 
 def find_trial_vid(items):
-    import regex as re
-
     for item in items:
         if item.endswith(".mp4"):
             return item
@@ -42,7 +41,6 @@ def find_tracklets_file(items):
 
 
 def get_recent_video(dropbox_folder):
-    import subprocess
     import json
     # Run the rclone command to list files in the Dropbox folder in JSON format
     command = ['rclone', 'lsjson', 'dropbox:' + dropbox_folder]
@@ -87,4 +85,59 @@ def get_clips(trial, config):
     vid = BehavioralVideo(video_path=vid, config=config, shuffle=4, tracklets_path=tracklets)
     vid.calculate_velocities()
     vid.check_bower_circling(threshold=120, extract_clips=True, bower_circling_length=32)
+
+
+def get_clips_from_clustering_data(trial, video, behavior='s', csv=None):
+    # behavior in {'x', 'f', 'd', 'm', 's', 'o', 't', 'c'}
+    # only care about 's' - spawning at the moment
+    import pandas as pd
+    from datetime import timedelta
+
+    t_delta = 2.5
+    trial = os.path.basename(video)
+    remote = "DLC_annotations/behavior_analysis_output/Bower-circling/"
+
+    # download clustering data from dropbox if it doesn't exist
+    clustering = os.path.join(trial, "clustering")
+    if not os.path.isdir(clustering):
+        os.mkdir(clustering)
+    clusters_csv = os.path.join(clustering, "AllLabeledClusters.csv")
+    if not os.path.exists(clusters_csv):
+        trial_id = os.path.basename(trial)
+        path = "BioSci-McGrath/Apps/CichlidPidata/__ProjectData/Single_nuc_1/"
+        path = os.path.join(path, trial_id, "MasterAnalysisFiles/AllLabeledClusters.csv")
+        subprocess.run(['rclone', 'copy', 'dropbox:' + path, clustering])
+    vid = find_trial_vid(os.listdir(trial))
+
+    # create folder in dropbox if it doesn't exist
+    dropbox_folder = os.path.join(remote, trial, "clusters")
+    result = subprocess.run(['rclone', 'lsf', 'dropbox:' + dropbox_folder], capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"Folder '{trial}' already exists in Dropbox.")
+    else:
+        print(f"Creating folder '{trial}' in Dropbox...")
+        create_folder_cmd = ['rclone', 'mkdir', 'dropbox:' + dropbox_folder]
+        subprocess.run(create_folder_cmd)
+
+
+    # read clustering data
+    clusters = pd.read_csv(clusters_csv)
+    clusters = clusters[(clusters['Prediction'] == behavior) &
+                   (clusters['VideoID'] == vid.replace(".mp4", "")) &
+                        (clusters['ClipCreated'] == "Yes")]
+    clusters['start'] = clusters['t'].apply(lambda x: str(timedelta(seconds=x - t_delta)))
+    clusters['end'] = clusters['t'].apply(lambda x: str(timedelta(seconds=x + t_delta)))
+    # create video
+    print(clusters['start'])
+    for _, cluster in tqdm(clusters.iterrows(), 'Uploading clusters'):
+        start = str(cluster['start'])
+        end = str(cluster['end'])
+        length = str(timedelta(seconds=2 * t_delta))
+        out_file = os.path.join(clusters_csv, f"{start[:10]}-{end[:10]}.mp4")
+        subprocess.call(['ffmpeg', '-ss', video, '-accurate_seek', '-i', vid, '-t', length, '-c:v', 'libx264',
+                '-c:a', 'aac', out_file, '-loglevel', 'quiet'])
+
+        subprocess.run(['rclone', 'copy', out_file, 'dropbox:' + remote])
+        os.remove(out_file)
+
 

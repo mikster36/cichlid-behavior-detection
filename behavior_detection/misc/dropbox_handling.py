@@ -1,5 +1,6 @@
 import os
 import subprocess
+from tqdm import tqdm
 
 from behavior_detection.BehavioralVideo import BehavioralVideo
 
@@ -86,13 +87,15 @@ def get_clips(trial, config):
     vid.check_bower_circling(threshold=120, extract_clips=True, bower_circling_length=32)
 
 
-def get_clips_from_clustering_data(trial, behavior, p_cutoff=0.7):
+def get_clips_from_clustering_data(trial, video, behavior='s', csv=None):
     # behavior in {'x', 'f', 'd', 'm', 's', 'o', 't', 'c'}
     # only care about 's' - spawning at the moment
     import pandas as pd
     from datetime import timedelta
-    from behavior_detection.misc.ffmpeg_split import get_video_length
-    from behavior_detection.misc.video_auxiliary import get_video_fps
+
+    t_delta = 2.5
+    trial = os.path.basename(video)
+    remote = "DLC_annotations/behavior_analysis_output/Bower-circling/"
 
     # download clustering data from dropbox if it doesn't exist
     clustering = os.path.join(trial, "clustering")
@@ -105,9 +108,16 @@ def get_clips_from_clustering_data(trial, behavior, p_cutoff=0.7):
         path = os.path.join(path, trial_id, "MasterAnalysisFiles/AllLabeledClusters.csv")
         subprocess.run(['rclone', 'copy', 'dropbox:' + path, clustering])
     vid = find_trial_vid(os.listdir(trial))
-    frame_rate = get_video_fps(os.path.join(trial, vid))
-    t_delta = 2.5
-    length = 5  # 5 second clips
+
+    # create folder in dropbox if it doesn't exist
+    dropbox_folder = os.path.join(remote, trial, "clusters")
+    result = subprocess.run(['rclone', 'lsf', 'dropbox:' + dropbox_folder], capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"Folder '{trial}' already exists in Dropbox.")
+    else:
+        print(f"Creating folder '{trial}' in Dropbox...")
+        create_folder_cmd = ['rclone', 'mkdir', 'dropbox:' + dropbox_folder]
+        subprocess.run(create_folder_cmd)
 
 
     # read clustering data
@@ -116,6 +126,18 @@ def get_clips_from_clustering_data(trial, behavior, p_cutoff=0.7):
                    (clusters['VideoID'] == vid.replace(".mp4", "")) &
                         (clusters['ClipCreated'] == "Yes")]
     clusters['start'] = clusters['t'].apply(lambda x: str(timedelta(seconds=x - t_delta)))
+    clusters['end'] = clusters['t'].apply(lambda x: str(timedelta(seconds=x + t_delta)))
+    # create video
+    print(clusters['start'])
+    for _, cluster in tqdm(clusters.iterrows(), 'Uploading clusters'):
+        start = str(cluster['start'])
+        end = str(cluster['end'])
+        length = str(timedelta(seconds=2 * t_delta))
+        out_file = os.path.join(clusters_csv, f"{start[:10]}-{end[:10]}.mp4")
+        subprocess.call(['ffmpeg', '-ss', video, '-accurate_seek', '-i', vid, '-t', length, '-c:v', 'libx264',
+                '-c:a', 'aac', out_file, '-loglevel', 'quiet'])
 
-    print(clusters)
+        subprocess.run(['rclone', 'copy', out_file, 'dropbox:' + remote])
+        os.remove(out_file)
+
 

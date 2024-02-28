@@ -19,7 +19,7 @@ np.seterr(divide='ignore', invalid='ignore')
 def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.Dict[typing.AnyStr, Fish]],
                          proximity: int,
                          head_tail_proximity: int, track_age: int, threshold: int, bower_circling_length: int,
-                         extract_clips: bool, debug=False):
+                         extract_clips: bool, buffer: int, debug=False):
     theta = math.radians(threshold)
     tracks = {}
     for frame_num, frame in tqdm(frames.items(), desc="Tracking bower circling incidents..."):
@@ -127,7 +127,7 @@ def track_bower_circling(video: str, frames: typing.Dict[typing.AnyStr, typing.D
     print(f"Added {len(bower_circling_incidents)} bower circling track(s) to frames data.")
 
     if extract_clips:
-        extract_incidents(bower_circling_incidents, video, behavior="bower-circling")
+        extract_incidents(bower_circling_incidents, video, buffer, behavior="bower-circling")
 
     return bower_circling_incidents
 

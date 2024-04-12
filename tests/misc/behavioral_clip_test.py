@@ -3,6 +3,7 @@ import os
 
 
 from behavior_detection.BehavioralVideo import BehavioralVideo
+from behavior_detection.misc import dropbox_handling
 
 
 def bower_circling_in_batches(config: str, batches: str, shuffle=1):
@@ -19,9 +20,12 @@ def bower_circling_in_batches(config: str, batches: str, shuffle=1):
 
 
 def main():
+    local = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/trials/'
+    remote = 'DLC_annotations/behavior_analysis_output/Bower-circling/'
     config_path = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/config.yaml"
-    batches = r"/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/MC_singlenuc23_1_Tk33_021220/batches"
-    bower_circling_in_batches(config_path, batches, 4)
+    vid_path = '/home/bree_student/Downloads/dlc_model-student-2023-07-26/videos/trials/MC_singlenuc37_2_Tk17_030320'
+    dropbox_handling.get_clips(vid_path, config_path)
+    dropbox_handling.upload_to_dropbox(local, remote)
 
 
 if __name__ == "__main__":

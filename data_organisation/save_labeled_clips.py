@@ -74,7 +74,7 @@ def write_to_sheets(spreadsheet, sheet, df):
     # Write data to the specified range
     worksheet.update(cell_range, data_to_write)
 
-    print("Data has been written to Google Sheets successfully.")
+    print("Data has been written to Google Sheets successfully")
 
 if __name__ == "__main__":
     labels = create_labeled_dict(DROPBOX_ROOT_FOLDER_PATH)
